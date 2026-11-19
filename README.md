@@ -2,6 +2,18 @@
 
 A small but complete library app: catalogue books, lend and return them, run waitlists, and help readers find their next book with an AI librarian.
 
+**Live demo:** https://folio-library-zeta.vercel.app · **Source:** https://github.com/DanAsad/folio-library
+
+Sign in with GitHub, or pick a one-click demo account on the login page:
+
+| Demo account | Role | What to try |
+| --- | --- | --- |
+| Jordan Lee | Member | Has an overdue book, so borrowing is blocked until it's returned. Is on a waitlist. Try smart search and the AI librarian. |
+| Sam Rivera | Librarian | Add a book by ISBN (auto-fill), check books out to members and in at the desk, see the circulation dashboard. |
+| Alex Morgan | Admin | Everything above plus member and role management. |
+
+All visitors share one sample library, so you may see other people's changes.
+
 **Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 + shadcn/ui · PostgreSQL (Drizzle ORM; Neon in production, embedded PGlite locally) · Auth.js (Google / GitHub SSO + demo accounts) · free open-source AI (GPT-OSS 20B through Pollinations; no account or API key) · Open Library API.
 
 ---
@@ -103,7 +115,7 @@ All variables are optional locally. See `.env.example`.
 1. Push the repo to GitHub and import it in Vercel.
 2. Create a free Postgres database (Neon, from the Vercel Marketplace or neon.tech) and set `DATABASE_URL`.
 3. Set `AUTH_SECRET`, plus the SSO variables you want. The AI needs no setup.
-4. Deploy. The `vercel-build` script runs `db:setup` (migrations and seed-if-empty) before `next build`.
+4. Deploy. The `vercel-build` script runs `db:setup` (migrations and seed-if-empty) before `next build`. If `DATABASE_URL` is missing, the build stops with a clear error instead of shipping a site without a database.
 5. Add `https://<your-app>.vercel.app/api/auth/callback/google` (and `/github`) to your OAuth apps.
 
 ## Project structure
