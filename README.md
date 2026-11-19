@@ -38,6 +38,7 @@ That's it. With no `DATABASE_URL`, the app starts an embedded Postgres (PGlite) 
 | `npm run db:reset` | Wipe and re-seed the database (stop the dev server first when using the embedded DB) |
 | `npm run db:setup` | Apply migrations and seed if empty (used for hosted Postgres) |
 | `npm run db:generate` | Generate a new SQL migration after changing `src/lib/db/schema.ts` |
+| `npm test` | Run the automated tests (no database or accounts needed) |
 | `npm run lint` / `npm run typecheck` | Static checks |
 
 To enable optional features, copy `.env.example` to `.env` and fill in what you need (see [Configuration](#configuration)).
@@ -141,7 +142,26 @@ src/
   components/              UI (shadcn/ui primitives, book cover, scanner, shell)
 drizzle/                   SQL migrations
 scripts/                   DB setup/seed and Open Library metadata fetcher
+tests/                     Vitest suites for the library rules, permissions and CSV
 ```
+
+## Testing
+
+```bash
+npm test
+```
+
+32 tests run in about 2 seconds with [Vitest](https://vitest.dev). The circulation tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
+
+| Area | What is checked |
+| --- | --- |
+| Borrowing | 14-day due date, librarian check-out recorded, no copies left, same book twice, 5-book limit, overdue block, two simultaneous requests for the last copy, deleted book |
+| Returning | Copy freed, late returns flagged, double return refused, members return only their own loans (staff can return any) |
+| Renewing | +14 days up to 2 times, overdue renewals count from today, blocked while someone waits, own loans only |
+| Waitlist | Queue order and position, duplicate holds refused, returned copy reserved for the first in line for 3 days, reserved copy blocked for others, expired reservations move to the next person, cancelling passes the copy on |
+| Search | Every word must match across title, author and tags; "available now" filter |
+| Permissions | Admin / librarian / member / signed-out access for every permission |
+| CSV | Round-trip with commas, quotes and line breaks; BOM and CRLF handling |
 
 ## Design notes
 - **Availability** = copies − active loans − copies reserved for the waitlist. Loans and holds run inside transactions that lock the book row, so two people can't take the last copy at the same time.
