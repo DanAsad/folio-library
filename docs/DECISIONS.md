@@ -41,7 +41,7 @@ Short notes on the choices behind Folio, what they cost, and what I'd do next. T
 ## Quality
 
 - 49 Vitest tests over the domain rules, tenancy, fines, reminders, reports, seed and migrations, running against a real in-memory Postgres in about 3 seconds.
-- GitHub Actions runs lint, typecheck, a production build, and the tests twice: on the embedded database and on a real Postgres server through the production driver. The second run exists because a raw SQL fragment with a JavaScript Thu Nov 19 17:15:44 GMTST 2026 worked on the embedded database but not on Neon; this catches that class of bug before it ships.
+- GitHub Actions runs lint, typecheck, a production build, and the tests twice: on the embedded database and on a real Postgres server through the production driver. The second run exists because a raw SQL fragment with a JavaScript `Date` worked on the embedded database but not on Neon; this catches that class of bug before it ships.
 - The deploy guard fails a Vercel build without `DATABASE_URL`, instead of shipping a site that crashes on first load.
 
 ## What I'd do next
