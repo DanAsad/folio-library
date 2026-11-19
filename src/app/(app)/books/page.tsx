@@ -27,8 +27,9 @@ export default async function CataloguePage({ searchParams }: PageProps<"/books"
   const interpretation = one(sp.ai) === "1" && q ? one(sp.why)?.slice(0, 200) || null : null;
   const year = (v: string | undefined) => (v && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 
-  const genres = await getGenres();
+  const genres = await getGenres(user.library.id);
   const filters: BookSearch = {
+    libraryId: user.library.id,
     q: interpretation ? one(sp.kw)?.trim() || undefined : q,
     field: interpretation ? "all" : field,
     genre: one(sp.genre) || undefined,

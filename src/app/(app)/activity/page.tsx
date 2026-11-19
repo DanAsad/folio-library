@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { desc, like, sql } from "drizzle-orm";
+import { and, desc, eq, like, sql } from "drizzle-orm";
 import { format, isToday, isYesterday } from "date-fns";
-import { BellRing, BookCheck, BookPlus, BookUp, Pencil, RefreshCw, ShieldCheck, Trash2, Upload, UserPlus, type LucideIcon } from "lucide-react";
+import { Archive, BellRing, BookCheck, BookCopy, BookPlus, BookUp, Building2, HandCoins, Pencil, Receipt, RefreshCw, SearchX, Settings, ShieldCheck, Trash2, Upload, UserPlus, XCircle, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/books/bits";
 import { getDb } from "@/lib/db/client";
 import { activity } from "@/lib/db/schema";
@@ -22,6 +22,14 @@ const ICONS: Record<string, LucideIcon> = {
   "book.import": Upload,
   "user.join": UserPlus,
   "user.role": ShieldCheck,
+  "copy.add": BookCopy,
+  "copy.update": Archive,
+  "copy.lost": SearchX,
+  "fine.add": Receipt,
+  "fine.paid": HandCoins,
+  "fine.waived": XCircle,
+  "library.settings": Settings,
+  "library.create": Building2,
 };
 
 const FILTERS = [
@@ -29,18 +37,20 @@ const FILTERS = [
   ["loan", "Loans"],
   ["hold", "Waitlists"],
   ["book", "Catalogue"],
+  ["copy", "Copies"],
+  ["fine", "Fines"],
   ["user", "Members"],
 ] as const;
 
 const PAGE = 60;
 
 export default async function ActivityPage({ searchParams }: PageProps<"/activity">) {
-  await requirePermissionPage("activity:view");
+  const user = await requirePermissionPage("activity:view");
   const sp = await searchParams;
   const type = typeof sp.type === "string" && FILTERS.some(([k]) => k === sp.type) ? sp.type : "";
   const page = Math.max(1, Number(sp.page) || 1);
   const db = await getDb();
-  const where = type ? like(activity.action, `${type}.%`) : undefined;
+  const where = and(eq(activity.libraryId, user.library.id), type ? like(activity.action, `${type}.%`) : undefined);
   const [rows, [{ total }]] = await Promise.all([
     db.query.activity.findMany({ where, orderBy: desc(activity.createdAt), limit: PAGE, offset: (page - 1) * PAGE }),
     db.select({ total: sql<number>`count(*)::int` }).from(activity).where(where),
@@ -55,7 +65,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
 
   return (
     <>
-      <PageHeader title="Activity log" description="An audit trail of every loan, return, waitlist change and catalogue edit." />
+      <PageHeader title="Activity log" description={`An audit trail of every loan, return, fine, copy and catalogue change at ${user.library.name}.`} />
       <div className="mb-6 flex flex-wrap gap-2 text-sm">
         {FILTERS.map(([k, label]) => (
           <Link key={k} href={k ? `/activity?type=${k}` : "/activity"} className={cn("rounded-full border px-3 py-1", type === k && "border-primary bg-accent text-accent-foreground")}>

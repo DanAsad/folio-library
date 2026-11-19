@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNowStrict } from "date-fns";
-import { BellPlus, BookCheck, BookUp, Check, ChevronsUpDown, Loader2, RefreshCw, Trash2, UserPlus, X } from "lucide-react";
+import { BellPlus, BookCheck, BookUp, Check, ChevronsUpDown, Loader2, RefreshCw, SearchX, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { deleteBook } from "@/lib/actions/books";
-import { borrowBook, cancelHold, joinWaitlist, renewBook, returnBook } from "@/lib/actions/loans";
+import { borrowBook, cancelHold, joinWaitlist, markLost, renewBook, returnBook } from "@/lib/actions/loans";
 import type { ActionResult } from "@/lib/actions/result";
 import { cn } from "@/lib/utils";
 
@@ -51,9 +51,13 @@ type Props = {
   myHold: { id: string; status: string; expiresAt: string | null; position: number } | null;
   staff: boolean;
   members: { id: string; name: string; email: string }[];
+  /** Barcodes of copies on the shelf, for lending a specific copy. */
+  freeCopies: string[];
+  loanDays: number;
+  maxRenewals: number;
 };
 
-export function BookActions({ bookId, available, myLoan, myHold, staff, members }: Props) {
+export function BookActions({ bookId, available, myLoan, myHold, staff, members, freeCopies, loanDays, maxRenewals }: Props) {
   const { pending, which, run } = useAction();
 
   let primary: React.ReactNode;
@@ -72,7 +76,7 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members 
             </Spin>
             Return
           </Button>
-          <Button variant="outline" disabled={pending || myLoan.renewals >= 2} onClick={() => run("renew", () => renewBook(myLoan.id))}>
+          <Button variant="outline" disabled={pending || myLoan.renewals >= maxRenewals} onClick={() => run("renew", () => renewBook(myLoan.id))}>
             <Spin show={pending && which === "renew"}>
               <RefreshCw />
             </Spin>
@@ -115,7 +119,7 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members 
         <Spin show={pending && which === "borrow"}>
           <BookUp />
         </Spin>
-        Borrow for 14 days
+        Borrow for {loanDays} days
       </Button>
     );
   } else {
@@ -132,13 +136,26 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members 
   return (
     <div className="space-y-2">
       {primary}
-      {staff && <LendDialog bookId={bookId} members={members} disabled={pending} />}
+      {staff && <LendDialog bookId={bookId} members={members} freeCopies={freeCopies} loanDays={loanDays} disabled={pending} />}
     </div>
   );
 }
 
-function LendDialog({ bookId, members, disabled }: { bookId: string; members: Props["members"]; disabled: boolean }) {
+function LendDialog({
+  bookId,
+  members,
+  freeCopies,
+  loanDays,
+  disabled,
+}: {
+  bookId: string;
+  members: Props["members"];
+  freeCopies: string[];
+  loanDays: number;
+  disabled: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [barcode, setBarcode] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const { pending, run } = useAction();
@@ -154,7 +171,7 @@ function LendDialog({ bookId, members, disabled }: { bookId: string; members: Pr
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Check out to a member</DialogTitle>
-          <DialogDescription>The loan will be due in 14 days. Members on the waitlist keep their place.</DialogDescription>
+          <DialogDescription>The loan will be due in {loanDays} days. Members on the waitlist keep their place.</DialogDescription>
         </DialogHeader>
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger asChild>
@@ -188,6 +205,24 @@ function LendDialog({ bookId, members, disabled }: { bookId: string; members: Pr
             </Command>
           </PopoverContent>
         </Popover>
+        <div className="space-y-1.5">
+          <label htmlFor="lend-barcode" className="text-sm font-medium">
+            Copy <span className="font-normal text-muted-foreground">(optional: scan or pick a barcode)</span>
+          </label>
+          <input
+            id="lend-barcode"
+            list="lend-barcodes"
+            value={barcode}
+            onChange={(e) => setBarcode(e.target.value.toUpperCase())}
+            placeholder={freeCopies[0] ? `First free copy (${freeCopies[0]})` : "No copy on the shelf"}
+            className="h-10 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <datalist id="lend-barcodes">
+            {freeCopies.map((b) => (
+              <option key={b} value={b} />
+            ))}
+          </datalist>
+        </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cancel
@@ -195,9 +230,10 @@ function LendDialog({ bookId, members, disabled }: { bookId: string; members: Pr
           <Button
             disabled={!memberId || pending}
             onClick={() =>
-              run("lend", () => borrowBook(bookId, memberId!), () => {
+              run("lend", () => borrowBook(bookId, memberId!, barcode || undefined), () => {
                 setOpen(false);
                 setMemberId(null);
+                setBarcode("");
               })
             }
           >
@@ -285,6 +321,43 @@ export function DeleteBookButton({ bookId, title, disabled }: { bookId: string; 
             }}
           >
             {pending && <Loader2 className="animate-spin" />} Delete book
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export function MarkLostButton({ loanId, barcode, fee }: { loanId: string; barcode: string; fee: string }) {
+  const { pending, run } = useAction();
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending}>
+          <Spin show={pending}>
+            <SearchX />
+          </Spin>
+          Lost
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Mark copy {barcode} as lost?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This closes the loan, takes the copy out of circulation and charges the member the lost-item fee ({fee}). If the book turns up, you can put the
+            copy back into circulation from the Copies tab and waive the fee.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-white hover:bg-destructive/90"
+            onClick={(e) => {
+              e.preventDefault();
+              run("lost", () => markLost(loanId));
+            }}
+          >
+            Mark lost
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { ArrowLeft, CalendarClock, Hash, Languages, MapPin, Pencil, BookText, Building2, Users } from "lucide-react";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,25 +11,29 @@ import { BookCover } from "@/components/book-cover";
 import { AvailabilityBadge, Stars } from "@/components/books/bits";
 import { BookGrid } from "@/components/books/book-views";
 import { getDb } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
+import { memberships, users } from "@/lib/db/schema";
 import { getBook, getSimilarBooks } from "@/lib/library";
+import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
-import { requireUser } from "@/lib/session";
+import { getCurrentUser, requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { BookActions, CheckInButton, DeleteBookButton } from "./book-actions";
+import { BookActions, CheckInButton, DeleteBookButton, MarkLostButton } from "./book-actions";
+import { CopiesPanel } from "./copies-panel";
 import { ReviewForm } from "./review-form";
 
 export async function generateMetadata({ params }: PageProps<"/books/[id]">) {
-  const data = await getBook((await params).id);
+  const user = await getCurrentUser();
+  const data = user ? await getBook(user.library.id, (await params).id) : null;
   return { title: data?.book.title ?? "Book" };
 }
 
 export default async function BookPage({ params }: PageProps<"/books/[id]">) {
   const { id } = await params;
   const user = await requireUser();
-  const data = await getBook(id);
+  const data = await getBook(user.library.id, id);
   if (!data) notFound();
-  const { book, activeLoans, queue, reviews, history } = data;
+  const { book, activeLoans, queue, reviews, history, copies } = data;
+  const lib = user.library;
   const staff = can(user.role, "loans:manage");
   const canEdit = can(user.role, "books:manage");
 
@@ -42,7 +46,14 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
   const [similar, members] = await Promise.all([
     getSimilarBooks(book),
     staff
-      ? getDb().then((db) => db.query.users.findMany({ columns: { id: true, name: true, email: true }, orderBy: asc(users.name) }))
+      ? getDb().then((db) =>
+          db
+            .select({ id: users.id, name: users.name, email: users.email })
+            .from(memberships)
+            .innerJoin(users, eq(users.id, memberships.userId))
+            .where(eq(memberships.libraryId, lib.id))
+            .orderBy(asc(users.name)),
+        )
       : Promise.resolve([]),
   ]);
 
@@ -98,6 +109,9 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
                 myHold={myHold ? { id: myHold.id, status: myHold.status, expiresAt: myHold.expiresAt?.toISOString() ?? null, position: waitingAhead + 1 } : null}
                 staff={staff}
                 members={members.map((m) => ({ id: m.id, name: m.name ?? m.email, email: m.email }))}
+                freeCopies={copies.filter((c) => c.status === "active" && !c.loan).map((c) => c.barcode)}
+                loanDays={lib.loanDays}
+                maxRenewals={lib.maxRenewals}
               />
             </CardContent>
           </Card>
@@ -153,6 +167,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             <TabsList>
               <TabsTrigger value="reviews">Reviews ({reviews.length})</TabsTrigger>
               <TabsTrigger value="waitlist">Waitlist ({queue.length})</TabsTrigger>
+              {staff && <TabsTrigger value="copies">Copies ({copies.filter((c) => c.status === "active").length})</TabsTrigger>}
               {staff && <TabsTrigger value="loans">On loan ({activeLoans.length})</TabsTrigger>}
               {staff && <TabsTrigger value="history">History</TabsTrigger>}
             </TabsList>
@@ -201,6 +216,24 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             </TabsContent>
 
             {staff && (
+              <TabsContent value="copies" className="pt-4">
+                <CopiesPanel
+                  bookId={book.id}
+                  canEdit={canEdit}
+                  copies={copies.map((c) => ({
+                    id: c.id,
+                    barcode: c.barcode,
+                    condition: c.condition,
+                    status: c.status,
+                    note: c.note,
+                    acquiredAt: c.acquiredAt.toISOString(),
+                    loan: c.loan ? { member: c.loan.user.name ?? c.loan.user.email, dueAt: c.loan.dueAt.toISOString() } : null,
+                  }))}
+                />
+              </TabsContent>
+            )}
+
+            {staff && (
               <TabsContent value="loans" className="pt-4">
                 {activeLoans.length === 0 ? (
                   <p className="text-sm text-muted-foreground">All copies are on the shelf.</p>
@@ -211,13 +244,18 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
                       return (
                         <li key={l.id} className="flex items-center justify-between gap-3 p-4 text-sm">
                           <div>
-                            <p className="font-medium">{l.user.name ?? l.user.email}</p>
+                            <p className="font-medium">
+                              {l.user.name ?? l.user.email} <span className="font-mono text-xs font-normal text-muted-foreground">{l.copy.barcode}</span>
+                            </p>
                             <p className={cn("text-xs", overdue ? "font-medium text-destructive" : "text-muted-foreground")}>
                               {overdue ? `Overdue by ${formatDistanceToNowStrict(l.dueAt)}` : `Due ${format(l.dueAt, "MMM d")}`} · borrowed{" "}
                               {format(l.borrowedAt, "MMM d")}
                             </p>
                           </div>
-                          <CheckInButton loanId={l.id} />
+                          <div className="flex gap-1">
+                            <MarkLostButton loanId={l.id} barcode={l.copy.barcode} fee={formatMoney(lib.lostItemFeeCents, lib.currency)} />
+                            <CheckInButton loanId={l.id} />
+                          </div>
                         </li>
                       );
                     })}
@@ -231,7 +269,9 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
                 <ul className="divide-y rounded-xl border bg-card text-sm">
                   {history.map((l) => (
                     <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                      <span>{l.user.name}</span>
+                      <span>
+                        {l.user.name} <span className="font-mono text-xs text-muted-foreground">{l.copy.barcode}</span>
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {format(l.borrowedAt, "MMM d")} → {l.returnedAt ? format(l.returnedAt, "MMM d") : "now"}
                       </span>

@@ -7,11 +7,11 @@ import { requirePermissionPage } from "@/lib/session";
 export const metadata = { title: "Add a book" };
 
 export default async function NewBookPage() {
-  await requirePermissionPage("books:manage");
+  const user = await requirePermissionPage("books:manage");
   return (
     <>
-      <PageHeader title="Add a book" description="Add a new title to the catalogue." />
-      <BookForm initial={EMPTY_BOOK} genres={await getGenres()} aiAvailable={aiEnabled()} />
+      <PageHeader title="Add a book" description={`Add a new title to the ${user.library.name} catalogue.`} />
+      <BookForm initial={EMPTY_BOOK} genres={await getGenres(user.library.id)} aiAvailable={aiEnabled()} />
     </>
   );
 }

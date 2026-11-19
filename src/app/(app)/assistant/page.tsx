@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { format } from "date-fns";
 import { aiEnabled, librarianSystemPrompt } from "@/lib/ai";
 import { getDb } from "@/lib/db/client";
@@ -14,9 +14,9 @@ export default async function AssistantPage({ searchParams }: PageProps<"/assist
   const q = (await searchParams).q;
   const db = await getDb();
   const [catalogue, history] = await Promise.all([
-    searchBooks({ sort: "title", limit: 400 }),
+    searchBooks({ libraryId: user.library.id, sort: "title", limit: 400 }),
     db.query.loans.findMany({
-      where: eq(loans.userId, user.id),
+      where: and(eq(loans.libraryId, user.library.id), eq(loans.userId, user.id)),
       with: { book: { columns: { title: true, author: true } } },
       orderBy: desc(loans.borrowedAt),
       limit: 25,
@@ -25,6 +25,7 @@ export default async function AssistantPage({ searchParams }: PageProps<"/assist
 
   // Only catalogue data and book titles go to the AI: no names or emails.
   const system = librarianSystemPrompt({
+    library: user.library,
     today: format(new Date(), "EEEE, MMMM d, yyyy"),
     catalogue: catalogue
       .map(

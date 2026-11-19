@@ -1,27 +1,64 @@
 import "server-only";
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { asc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
+import { getDb } from "@/lib/db/client";
+import { libraries, memberships, users, type Library, type Role } from "@/lib/db/schema";
 import { can, type Permission } from "@/lib/permissions";
-import type { Role } from "@/lib/db/schema";
+import { ensureDefaultMembership, LIBRARY_COOKIE } from "@/lib/tenancy";
+
+export type LibraryChoice = { id: string; name: string; tagline: string | null; role: Role };
 
 export type CurrentUser = {
   id: string;
   name: string;
   email: string;
   image: string | null;
+  /** Role in the current library. */
   role: Role;
+  /** The library the user is working in (chosen with the switcher, stored in a cookie). */
+  library: Library;
+  libraries: LibraryChoice[];
 };
+
+async function loadMemberships(userId: string) {
+  const db = await getDb();
+  return db
+    .select({ role: memberships.role, library: libraries })
+    .from(memberships)
+    .innerJoin(libraries, eq(libraries.id, memberships.libraryId))
+    .where(eq(memberships.userId, userId))
+    .orderBy(asc(libraries.createdAt));
+}
 
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  const uid = session?.user?.id;
+  if (!uid) return null;
+  const db = await getDb();
+  const account = await db.query.users.findFirst({ where: eq(users.id, uid) });
+  if (!account) return null;
+
+  let rows = await loadMemberships(uid);
+  if (!rows.length) {
+    // e.g. after the nightly demo reset: SSO users rejoin the default library.
+    await ensureDefaultMembership(db, account);
+    rows = await loadMemberships(uid);
+    if (!rows.length) return null;
+  }
+  const wanted = (await cookies()).get(LIBRARY_COOKIE)?.value;
+  const current = rows.find((r) => r.library.id === wanted) ?? rows[0];
+
   return {
-    id: session.user.id,
-    name: session.user.name ?? session.user.email ?? "Reader",
-    email: session.user.email ?? "",
-    image: session.user.image ?? null,
-    role: session.user.role,
+    id: account.id,
+    name: account.name ?? account.email ?? "Reader",
+    email: account.email,
+    image: account.image ?? null,
+    role: current.role,
+    library: current.library,
+    libraries: rows.map((r) => ({ id: r.library.id, name: r.library.name, tagline: r.library.tagline, role: r.role })),
   };
 });
 
@@ -41,7 +78,7 @@ export async function requirePermissionPage(permission: Permission): Promise<Cur
 
 export class ActionError extends Error {}
 
-/** For server actions: throw instead of redirecting. */
+/** For server actions: throw instead of redirecting. Permissions are checked against the current library. */
 export async function authorize(permission?: Permission): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) throw new ActionError("Please sign in first.");

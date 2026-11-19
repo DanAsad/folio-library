@@ -2,7 +2,7 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 
@@ -19,46 +19,78 @@ export async function createTestDb(): Promise<DB> {
 }
 
 export async function resetDb(db: DB) {
-  await db.execute(sql`truncate activity, reviews, holds, loans, books, users restart identity cascade`);
+  await db.execute(sql`truncate libraries, users restart identity cascade`);
 }
 
 let counter = 0;
 
-export async function makeUser(db: DB, role: schema.Role = "member", name?: string) {
+/** A library with the default rules unless overridden (14 days, 5 books, $0.25/day...). */
+export async function makeLibrary(db: DB, rules: Partial<typeof schema.libraries.$inferInsert> = {}) {
+  counter++;
+  const [lib] = await db
+    .insert(schema.libraries)
+    .values({ name: `Library ${counter}`, slug: `lib-${counter}`, code: `L${String.fromCharCode(65 + (counter % 26))}${counter}`.slice(0, 5), ...rules })
+    .returning();
+  return lib;
+}
+
+export async function makeUser(db: DB, libraryId: string, role: schema.Role = "member", name?: string) {
   counter++;
   const [user] = await db
     .insert(schema.users)
-    .values({ email: `user${counter}@test.local`, name: name ?? `User ${counter}`, role })
+    .values({ email: `user${counter}@test.local`, name: name ?? `User ${counter}` })
     .returning();
+  await db.insert(schema.memberships).values({ libraryId, userId: user.id, role });
   return user;
 }
 
-export async function makeBook(db: DB, copies = 1, title?: string) {
+export async function makeBook(db: DB, libraryId: string, copies = 1, title?: string) {
   counter++;
   const [book] = await db
     .insert(schema.books)
-    .values({ title: title ?? `Book ${counter}`, author: "Test Author", totalCopies: copies })
+    .values({ libraryId, title: title ?? `Book ${counter}`, author: "Test Author" })
     .returning();
+  const lib = await db.query.libraries.findFirst({ where: eq(schema.libraries.id, libraryId) });
+  for (let i = 0; i < copies; i++) {
+    counter++;
+    await db.insert(schema.copies).values({ bookId: book.id, barcode: `${lib!.code}-T${counter}` });
+  }
   return book;
 }
 
-/** Inserts a loan directly, e.g. one that is already overdue. `dueInDays` may be negative. */
-export async function makeLoan(db: DB, bookId: string, userId: string, dueInDays = 14) {
+/** Inserts an open loan on a free copy directly, e.g. one that is already overdue. `dueInDays` may be negative. */
+export async function makeLoan(db: DB, libraryId: string, bookId: string, userId: string, dueInDays = 14) {
+  const [copy] = await db
+    .select({ id: schema.copies.id })
+    .from(schema.copies)
+    .where(
+      and(
+        eq(schema.copies.bookId, bookId),
+        eq(schema.copies.status, "active"),
+        sql`not exists (select 1 from loans l where l.copy_id = "copies"."id" and l.returned_at is null)`,
+      ),
+    )
+    .limit(1);
+  if (!copy) throw new Error("makeLoan: no free copy");
   const now = Date.now();
   const [loan] = await db
     .insert(schema.loans)
-    .values({ bookId, userId, borrowedAt: new Date(now - DAY), dueAt: new Date(now + dueInDays * DAY) })
+    .values({ libraryId, bookId, copyId: copy.id, userId, borrowedAt: new Date(now - 20 * DAY), dueAt: new Date(now + dueInDays * DAY) })
     .returning();
   return loan;
 }
 
 /** Inserts a waiting hold with an explicit timestamp so queue order is deterministic. */
-export async function makeHold(db: DB, bookId: string, userId: string, minutesAgo: number) {
+export async function makeHold(db: DB, libraryId: string, bookId: string, userId: string, minutesAgo: number) {
   const [hold] = await db
     .insert(schema.holds)
-    .values({ bookId, userId, createdAt: new Date(Date.now() - minutesAgo * 60_000) })
+    .values({ libraryId, bookId, userId, createdAt: new Date(Date.now() - minutesAgo * 60_000) })
     .returning();
   return hold;
+}
+
+export async function openLoans(db: DB, bookId: string) {
+  return db.query.loans.findMany({ where: and(eq(schema.loans.bookId, bookId), isNull(schema.loans.returnedAt)) });
 }
 
 export { DAY };

@@ -9,11 +9,14 @@ describe("role permissions", () => {
     for (const p of all) expect(can("admin", p)).toBe(true);
   });
 
-  it("lets librarians run the desk but not manage users", () => {
+  it("lets librarians run the desk but not manage people or library settings", () => {
     expect(can("librarian", "books:manage")).toBe(true);
     expect(can("librarian", "loans:manage")).toBe(true);
+    expect(can("librarian", "fines:manage")).toBe(true);
+    expect(can("librarian", "reports:view")).toBe(true);
     expect(can("librarian", "activity:view")).toBe(true);
     expect(can("librarian", "users:manage")).toBe(false);
+    expect(can("librarian", "settings:manage")).toBe(false);
   });
 
   it("gives members no staff permissions", () => {

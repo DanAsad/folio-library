@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { PageHeader } from "@/components/books/bits";
 import { BookForm } from "@/components/books/book-form";
 import { aiEnabled } from "@/lib/ai";
@@ -11,11 +11,11 @@ import { requirePermissionPage } from "@/lib/session";
 export const metadata = { title: "Edit book" };
 
 export default async function EditBookPage({ params }: PageProps<"/books/[id]/edit">) {
-  await requirePermissionPage("books:manage");
+  const user = await requirePermissionPage("books:manage");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
-  const book = await db.query.books.findFirst({ where: eq(books.id, id) });
+  const book = await db.query.books.findFirst({ where: and(eq(books.id, id), eq(books.libraryId, user.library.id)) });
   if (!book) notFound();
 
   const s = (v: string | number | null) => (v === null ? "" : String(v));
@@ -24,7 +24,7 @@ export default async function EditBookPage({ params }: PageProps<"/books/[id]/ed
       <PageHeader title="Edit book" description={book.title} />
       <BookForm
         bookId={book.id}
-        genres={await getGenres()}
+        genres={await getGenres(user.library.id)}
         aiAvailable={aiEnabled()}
         initial={{
           title: book.title,
@@ -38,7 +38,7 @@ export default async function EditBookPage({ params }: PageProps<"/books/[id]/ed
           language: book.language,
           description: s(book.description),
           coverUrl: s(book.coverUrl),
-          totalCopies: String(book.totalCopies),
+          copies: "1",
           location: s(book.location),
         }}
       />

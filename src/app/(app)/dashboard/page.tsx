@@ -2,14 +2,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { differenceInCalendarDays, format, formatDistanceToNowStrict } from "date-fns";
-import { AlertTriangle, ArrowRight, BellRing, BookCopy, BookMarked, BookOpen, Clock, LibraryBig, ShieldAlert, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, BellRing, BookCopy, BookMarked, BookOpen, Clock, LibraryBig, Receipt, ShieldAlert, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookCover } from "@/components/book-cover";
 import { BookGrid } from "@/components/books/book-views";
 import { getDb } from "@/lib/db/client";
 import { holds, loans } from "@/lib/db/schema";
-import { searchBooks } from "@/lib/library";
+import { getBalance, searchBooks } from "@/lib/library";
+import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { requireUser, type CurrentUser } from "@/lib/session";
 import { getGenreBreakdown, getLibraryStats, getOverdueLoans, getRecentActivity, getTopBooks, getWeeklyLoans } from "@/lib/stats";
@@ -59,13 +60,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         </div>
       )}
       <MemberSection user={user} />
-      {staff && <StaffSection />}
+      {staff && <StaffSection user={user} />}
       {!staff && (
         <Suspense fallback={<RecommendationsSkeleton />}>
-          <Recommendations userId={user.id} />
+          <Recommendations userId={user.id} libraryId={user.library.id} />
         </Suspense>
       )}
-      <Discover />
+      <Discover libraryId={user.library.id} />
     </div>
   );
 }
@@ -73,22 +74,38 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 async function MemberSection({ user }: { user: CurrentUser }) {
   const db = await getDb();
   const staff = can(user.role, "loans:manage");
-  const [myLoans, myHolds, [{ read }]] = await Promise.all([
-    db.query.loans.findMany({ where: and(eq(loans.userId, user.id), isNull(loans.returnedAt)), with: { book: true }, orderBy: asc(loans.dueAt) }),
-    db.query.holds.findMany({ where: and(eq(holds.userId, user.id), inArray(holds.status, ["waiting", "ready"])), with: { book: true } }),
-    db.select({ read: sql<number>`count(distinct ${loans.bookId})::int` }).from(loans).where(eq(loans.userId, user.id)),
+  const lib = user.library;
+  const [myLoans, myHolds, [{ read }], owed] = await Promise.all([
+    db.query.loans.findMany({ where: and(eq(loans.libraryId, lib.id), eq(loans.userId, user.id), isNull(loans.returnedAt)), with: { book: true }, orderBy: asc(loans.dueAt) }),
+    db.query.holds.findMany({ where: and(eq(holds.libraryId, lib.id), eq(holds.userId, user.id), inArray(holds.status, ["waiting", "ready"])), with: { book: true } }),
+    db.select({ read: sql<number>`count(distinct ${loans.bookId})::int` }).from(loans).where(and(eq(loans.libraryId, lib.id), eq(loans.userId, user.id))),
+    getBalance(db, lib.id, user.id),
   ]);
+  const blocked = lib.blockAtCents > 0 && owed >= lib.blockAtCents;
   const ready = myHolds.filter((h) => h.status === "ready");
   const overdue = myLoans.filter((l) => l.dueAt < new Date());
   const dueSoon = myLoans.filter((l) => l.dueAt >= new Date() && differenceInCalendarDays(l.dueAt, new Date()) <= 7);
 
   // Staff get the library-wide picture below; keep their personal section light.
-  if (staff && myLoans.length === 0 && myHolds.length === 0) return null;
+  if (staff && myLoans.length === 0 && myHolds.length === 0 && owed === 0) return null;
 
   return (
     <div className="space-y-6">
-      {(ready.length > 0 || overdue.length > 0) && (
+      {(ready.length > 0 || overdue.length > 0 || blocked) && (
         <div className="space-y-2">
+          {blocked && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
+              <p className="flex items-center gap-2 text-sm">
+                <Receipt className="size-4 text-destructive" />
+                <span>
+                  You owe <strong>{formatMoney(owed, lib.currency)}</strong> in fines. Borrowing is paused until it&apos;s settled at the {lib.name} desk.
+                </span>
+              </p>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/loans?view=mine#fines">See fines</Link>
+              </Button>
+            </div>
+          )}
           {ready.map((h) => (
             <div key={h.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/8 px-4 py-3">
               <p className="flex items-center gap-2 text-sm">
@@ -119,10 +136,14 @@ async function MemberSection({ user }: { user: CurrentUser }) {
 
       {!staff && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat icon={BookMarked} label="Borrowed now" value={myLoans.length} hint="Up to 5 at a time" />
+          <Stat icon={BookMarked} label="Borrowed now" value={myLoans.length} hint={`Up to ${lib.maxLoans} at a time`} />
           <Stat icon={Clock} label="Due this week" value={dueSoon.length + overdue.length} tone={overdue.length ? "danger" : undefined} hint={overdue.length ? `${overdue.length} overdue` : "All on time"} />
           <Stat icon={BellRing} label="On waitlists" value={myHolds.length} hint={ready.length ? `${ready.length} ready to pick up` : undefined} />
-          <Stat icon={BookOpen} label="Books read" value={read} hint="All time" />
+          {owed > 0 ? (
+            <Stat icon={Receipt} label="Fines owed" value={formatMoney(owed, lib.currency)} tone={blocked ? "danger" : undefined} hint={blocked ? "Borrowing paused" : "Pay at the desk"} />
+          ) : (
+            <Stat icon={BookOpen} label="Books read" value={read} hint="All time" />
+          )}
         </div>
       )}
 
@@ -154,24 +175,26 @@ async function MemberSection({ user }: { user: CurrentUser }) {
   );
 }
 
-async function StaffSection() {
+async function StaffSection({ user }: { user: CurrentUser }) {
+  const id = user.library.id;
   const [stats, weekly, genres, top, overdue, recent] = await Promise.all([
-    getLibraryStats(),
-    getWeeklyLoans(12),
-    getGenreBreakdown(),
-    getTopBooks(5),
-    getOverdueLoans(6),
-    getRecentActivity(8),
+    getLibraryStats(id),
+    getWeeklyLoans(id, 12),
+    getGenreBreakdown(id),
+    getTopBooks(id, 5),
+    getOverdueLoans(id, 6),
+    getRecentActivity(id, 8),
   ]);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Stat icon={LibraryBig} label="Titles" value={stats.titles} hint={`${stats.copies} copies`} />
         <Stat icon={BookCopy} label="On loan" value={stats.onLoan} hint={`${stats.utilisation}% of copies in use`} />
         <Stat icon={AlertTriangle} label="Overdue" value={stats.overdue} tone={stats.overdue ? "danger" : undefined} hint="Needs follow-up" />
         <Stat icon={Users} label="Members" value={stats.members} hint={`${stats.loans30d} loans in 30 days`} />
         <Stat icon={BellRing} label="Waiting" value={stats.waiting} hint="Members on waitlists" />
+        <Stat icon={Receipt} label="Fines owed" value={formatMoney(stats.owedCents, user.library.currency)} hint={`${stats.owingMembers} member${stats.owingMembers === 1 ? "" : "s"}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
@@ -254,7 +277,7 @@ async function StaffSection() {
         <Card>
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>
-            <CardDescription>Across the library</CardDescription>
+            <CardDescription>At {user.library.name}</CardDescription>
             <CardAction>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/activity">View all</Link>
@@ -277,8 +300,8 @@ async function StaffSection() {
   );
 }
 
-async function Discover() {
-  const [newest, popular] = await Promise.all([searchBooks({ sort: "newest", limit: 5 }), searchBooks({ sort: "rating", limit: 5 })]);
+async function Discover({ libraryId }: { libraryId: string }) {
+  const [newest, popular] = await Promise.all([searchBooks({ libraryId, sort: "newest", limit: 5 }), searchBooks({ libraryId, sort: "rating", limit: 5 })]);
   return (
     <div className="space-y-10">
       <section className="space-y-4">

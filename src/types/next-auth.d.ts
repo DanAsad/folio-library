@@ -1,8 +1,8 @@
 import type { DefaultSession } from "next-auth";
-import type { Role } from "@/lib/db/schema";
 
 declare module "next-auth" {
   interface Session {
-    user: { id: string; role: Role } & DefaultSession["user"];
+    // Roles are per library, so they are resolved per request in lib/session.ts, not stored in the token.
+    user: { id: string } & DefaultSession["user"];
   }
 }

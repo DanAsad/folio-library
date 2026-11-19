@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
-import { BookOpenCheck, Sparkles, ScanBarcode, ShieldCheck } from "lucide-react";
+import { BookOpenCheck, Building2, Sparkles, ScanBarcode, ShieldCheck } from "lucide-react";
 import { DEMO_MODE, ssoProviders } from "@/auth";
 import { getCurrentUser } from "@/lib/session";
+import { getDb } from "@/lib/db/client";
 import { searchBooks } from "@/lib/library";
+import { defaultLibrary } from "@/lib/tenancy";
 import { Logo } from "@/components/logo";
 import { BookCover } from "@/components/book-cover";
 import { LoginCard } from "./login-card";
@@ -11,7 +13,8 @@ export const metadata = { title: "Sign in" };
 
 export default async function LoginPage() {
   if (await getCurrentUser()) redirect("/dashboard");
-  const featured = (await searchBooks({ sort: "popular", limit: 12 })).filter((b) => b.coverUrl).slice(0, 5);
+  const lib = await defaultLibrary(await getDb());
+  const featured = lib ? (await searchBooks({ libraryId: lib.id, sort: "popular", limit: 12 })).filter((b) => b.coverUrl).slice(0, 5) : [];
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
@@ -29,6 +32,7 @@ export default async function LoginPage() {
             <li className="flex items-center gap-3"><Sparkles className="size-4" /> Natural-language search and personal recommendations</li>
             <li className="flex items-center gap-3"><ScanBarcode className="size-4" /> Add books by scanning a barcode or typing an ISBN</li>
             <li className="flex items-center gap-3"><ShieldCheck className="size-4" /> SSO sign-in with admin, librarian and member roles</li>
+            <li className="flex items-center gap-3"><Building2 className="size-4" /> Several libraries, each with its own catalogue, rules and fines</li>
           </ul>
         </div>
         <div className="relative flex items-end gap-4">
@@ -45,7 +49,7 @@ export default async function LoginPage() {
         <Logo href="/login" className="lg:hidden" />
         <LoginCard demoMode={DEMO_MODE} google={ssoProviders.google} github={ssoProviders.github} />
         <p className="max-w-sm text-center text-xs text-muted-foreground">
-          Demo accounts share one sample library, so feel free to borrow, return and edit. You can reset everything with <code className="font-mono">npm run db:reset</code>.
+          Demo accounts share two sample libraries, so feel free to borrow, return and edit. Everything resets to the sample data every night at 04:00 UTC.
         </p>
       </section>
     </div>

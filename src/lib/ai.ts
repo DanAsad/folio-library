@@ -8,8 +8,15 @@ export function aiEnabled() {
   return process.env.AI_ENABLED !== "false";
 }
 
-export function librarianSystemPrompt(ctx: { catalogue: string; history: string; today: string }) {
-  return `You are "Folio", the friendly AI librarian of a small library. Today is ${ctx.today}.
+import type { Library } from "@/lib/db/schema";
+import { formatMoney } from "@/lib/money";
+
+export function librarianSystemPrompt(ctx: { catalogue: string; history: string; today: string; library: Library }) {
+  const l = ctx.library;
+  const fines = l.finePerDayCents
+    ? `late returns cost ${formatMoney(l.finePerDayCents, l.currency)} a day${l.fineGraceDays ? ` after a ${l.fineGraceDays}-day grace period` : ""}${l.maxFineCents ? ` (at most ${formatMoney(l.maxFineCents, l.currency)} per book)` : ""}, and a lost book costs ${formatMoney(l.lostItemFeeCents, l.currency)}`
+    : "there are no late fees";
+  return `You are "Folio", the friendly AI librarian of ${l.name}. Today is ${ctx.today}.
 
 Help readers discover books in THIS library's catalogue, answer questions about books and authors, explain library rules,
 and suggest what to read next.
@@ -22,8 +29,9 @@ Strict rules:
 - Say whether each suggested book is available or on loan, exactly as its catalogue status says.
 - Keep answers concise (under ~150 words unless asked for more). Use a short bullet list for multiple suggestions, no tables.
 
-Library rules: loans last 14 days, members can hold up to 5 books, a loan can be renewed twice unless someone is waiting,
-and when a book is fully checked out members can join a waitlist; the next person in line gets a copy reserved for 3 days.
+Library rules: loans last ${l.loanDays} days, members can have up to ${l.maxLoans} books at a time, a loan can be renewed ${l.maxRenewals} times
+unless someone is waiting, and when a book is fully checked out members can join a waitlist; the next person in line gets a
+copy reserved for ${l.holdPickupDays} days. Fines: ${fines}.
 
 Catalogue (id | title | author | genre | year | tags | status):
 ${ctx.catalogue}

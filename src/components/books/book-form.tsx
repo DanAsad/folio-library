@@ -27,7 +27,7 @@ export type BookFormValues = {
   language: string;
   description: string;
   coverUrl: string;
-  totalCopies: string;
+  copies: string;
   location: string;
 };
 
@@ -43,7 +43,7 @@ export const EMPTY_BOOK: BookFormValues = {
   language: "English",
   description: "",
   coverUrl: "",
-  totalCopies: "1",
+  copies: "1",
   location: "",
 };
 
@@ -222,9 +222,13 @@ export function BookForm({
         <BookCover title={v.title || "Untitled"} author={v.author || "Unknown author"} coverUrl={v.coverUrl} size="lg" className="mx-auto w-48 lg:w-full" key={v.coverUrl} />
         <Card>
           <CardContent className="grid gap-4">
-            <Field label="Copies" required>
-              <Input type="number" min={1} max={999} value={v.totalCopies} onChange={set("totalCopies")} required />
-            </Field>
+            {bookId ? (
+              <p className="text-sm text-muted-foreground">Copies, barcodes and their condition are managed on the book page.</p>
+            ) : (
+              <Field label="Copies" required hint="Each gets its own barcode">
+                <Input type="number" min={1} max={50} value={v.copies} onChange={set("copies")} required />
+              </Field>
+            )}
             <Field label="Shelf location" hint="e.g. SF-12">
               <Input value={v.location} onChange={set("location")} className="font-mono" />
             </Field>

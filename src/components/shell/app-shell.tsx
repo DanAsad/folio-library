@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Activity,
+  BarChart3,
   BookMarked,
   LayoutDashboard,
   LibrarySquare,
@@ -13,6 +14,7 @@ import {
   Moon,
   Plus,
   Search,
+  Settings,
   Sparkles,
   Sun,
   Users,
@@ -32,7 +34,9 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/logo";
 import { CommandMenu, useCommandMenu } from "@/components/shell/command-menu";
+import { LibrarySwitcher } from "@/components/shell/library-switcher";
 import { navFor, type NavItem } from "@/components/shell/nav";
+import { NotificationsBell, type NotificationItem } from "@/components/shell/notifications-bell";
 import { signOutAction } from "@/lib/actions/auth";
 import { ROLE_LABEL, can } from "@/lib/permissions";
 import type { CurrentUser } from "@/lib/session";
@@ -46,6 +50,8 @@ const ICONS: Record<NavItem["icon"], typeof Activity> = {
   assistant: Sparkles,
   members: Users,
   activity: Activity,
+  reports: BarChart3,
+  settings: Settings,
 };
 
 function NavLinks({ user, badges, onNavigate }: { user: CurrentUser; badges: Record<string, number>; onNavigate?: () => void }) {
@@ -98,10 +104,12 @@ function ThemeToggle() {
 export function AppShell({
   user,
   badges,
+  notifications,
   children,
 }: {
   user: CurrentUser;
   badges: Record<string, number>;
+  notifications: { unread: number; items: NotificationItem[] };
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -119,6 +127,7 @@ export function AppShell({
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 border-r bg-sidebar px-4 py-5 lg:flex">
         <Logo className="px-2" />
+        <LibrarySwitcher user={user} />
         <NavLinks user={user} badges={badges} />
         <div className="mt-auto">{sidebarFooter}</div>
       </aside>
@@ -135,6 +144,7 @@ export function AppShell({
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <div className="flex h-full flex-col gap-6">
                 <Logo />
+                <LibrarySwitcher user={user} onNavigate={() => setMobileOpen(false)} />
                 <NavLinks user={user} badges={badges} onNavigate={() => setMobileOpen(false)} />
                 <div className="mt-auto">{sidebarFooter}</div>
               </div>
@@ -159,6 +169,7 @@ export function AppShell({
                 </Link>
               </Button>
             )}
+            <NotificationsBell items={notifications.items} unread={notifications.unread} multiLibrary={user.libraries.length > 1} currentLibraryId={user.library.id} />
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -173,7 +184,9 @@ export function AppShell({
                 <DropdownMenuLabel className="space-y-1">
                   <p className="truncate text-sm font-medium">{user.name}</p>
                   <p className="truncate text-xs font-normal text-muted-foreground">{user.email}</p>
-                  <Badge variant="secondary">{ROLE_LABEL[user.role]}</Badge>
+                  <Badge variant="secondary">
+                    {ROLE_LABEL[user.role]} · {user.library.name}
+                  </Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>

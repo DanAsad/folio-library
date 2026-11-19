@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Sparkles } from "lucide-react";
 import { aiEnabled } from "@/lib/ai";
 import { getDb } from "@/lib/db/client";
@@ -10,12 +10,12 @@ import { PicksPanel, type PickBook } from "./picks-panel";
  * "Picked for you": instant picks from the reader's favourite genres, which the reader can
  * upgrade to AI picks (with a personal reason for each) using the free AI in their browser.
  */
-export async function Recommendations({ userId }: { userId: string }) {
+export async function Recommendations({ userId, libraryId }: { userId: string; libraryId: string }) {
   const db = await getDb();
   const [history, myReviews, catalogue] = await Promise.all([
-    db.query.loans.findMany({ where: eq(loans.userId, userId), with: { book: true }, orderBy: desc(loans.borrowedAt), limit: 30 }),
+    db.query.loans.findMany({ where: and(eq(loans.libraryId, libraryId), eq(loans.userId, userId)), with: { book: true }, orderBy: desc(loans.borrowedAt), limit: 30 }),
     db.query.reviews.findMany({ where: eq(reviews.userId, userId) }),
-    searchBooks({ sort: "popular", limit: 400 }),
+    searchBooks({ libraryId, sort: "popular", limit: 400 }),
   ]);
 
   const read = new Set([...history.map((l) => l.bookId), ...myReviews.map((r) => r.bookId)]);
