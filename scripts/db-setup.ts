@@ -16,6 +16,15 @@ async function main() {
   const reset = process.argv.includes("--reset");
   const url = process.env.DATABASE_URL;
 
+  // Serverless hosts have a read-only, throwaway filesystem: the embedded database
+  // cannot work there, so fail the build loudly instead of shipping a broken site.
+  if (!url && process.env.VERCEL) {
+    throw new Error(
+      "DATABASE_URL is not set. Add your Postgres connection string (e.g. Neon) in " +
+        "Vercel → Project → Settings → Environment Variables, then redeploy.",
+    );
+  }
+
   if (url) {
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const { migrate } = await import("drizzle-orm/postgres-js/migrator");
