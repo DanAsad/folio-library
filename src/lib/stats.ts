@@ -120,6 +120,8 @@ export async function getReport(libraryId: string, days: ReportRange) {
   const db = await getDb();
   const since = new Date(Date.now() - days * DAY);
   const bucket = days > 90 ? "month" : "week";
+  // Raw SQL fragments get no column type, so dates go in as ISO strings (postgres.js can't send a Date there).
+  const sinceTs = sql`${since.toISOString()}::timestamptz`;
   const inRange = and(eq(loans.libraryId, libraryId), gte(loans.borrowedAt, since));
 
   const [[circ], [returned], [money], [joined], series, fineSeries, genres, topBooks, topMembers, collection] = await Promise.all([
@@ -137,9 +139,9 @@ export async function getReport(libraryId: string, days: ReportRange) {
       .where(and(eq(loans.libraryId, libraryId), gte(loans.returnedAt, since))),
     db
       .select({
-        charged: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.createdAt} >= ${since}), 0)::int`,
-        collected: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.status} = 'paid' and ${fines.resolvedAt} >= ${since}), 0)::int`,
-        waived: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.status} = 'waived' and ${fines.resolvedAt} >= ${since}), 0)::int`,
+        charged: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.createdAt} >= ${sinceTs}), 0)::int`,
+        collected: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.status} = 'paid' and ${fines.resolvedAt} >= ${sinceTs}), 0)::int`,
+        waived: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.status} = 'waived' and ${fines.resolvedAt} >= ${sinceTs}), 0)::int`,
         outstanding: sql<number>`coalesce(sum(${fines.amountCents}) filter (where ${fines.status} = 'open'), 0)::int`,
       })
       .from(fines)

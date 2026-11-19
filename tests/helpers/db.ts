@@ -8,13 +8,28 @@ import * as schema from "@/lib/db/schema";
 
 const DAY = 24 * 60 * 60 * 1000;
 
+const migrationsFolder = path.resolve(__dirname, "../../drizzle");
+
 /**
- * A real Postgres (PGlite) in memory, with the app's own migrations applied.
- * Tests run the actual SQL, transactions and row locks, not mocks.
+ * A real Postgres with the app's own migrations applied: PGlite in memory by default, or
+ * the server in TEST_DATABASE_URL (CI runs both). The server run uses the same driver as
+ * production (postgres.js) and real concurrent connections.
  */
 export async function createTestDb(): Promise<DB> {
+  const url = process.env.TEST_DATABASE_URL;
+  if (url) {
+    const { default: postgres } = await import("postgres");
+    const { drizzle: drizzlePg } = await import("drizzle-orm/postgres-js");
+    const { migrate: migratePg } = await import("drizzle-orm/postgres-js/migrator");
+    const admin = postgres(url, { max: 1, onnotice: () => {} });
+    await admin.unsafe("drop schema if exists drizzle cascade; drop schema if exists public cascade; create schema public;");
+    await admin.end();
+    const db = drizzlePg(postgres(url, { max: 5, prepare: false, onnotice: () => {} }), { schema });
+    await migratePg(db, { migrationsFolder });
+    return db as unknown as DB;
+  }
   const db = drizzle(new PGlite(), { schema });
-  await migrate(db, { migrationsFolder: path.resolve(__dirname, "../../drizzle") });
+  await migrate(db, { migrationsFolder });
   return db as unknown as DB;
 }
 

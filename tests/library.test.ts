@@ -459,4 +459,23 @@ describe("demo seed", () => {
     expect(await rows(sql`select l.id from loans l join books b on b.id = l.book_id where l.library_id <> b.library_id`)).toHaveLength(0);
     expect(await rows(sql`select h.id from holds h join books b on b.id = h.book_id where h.library_id <> b.library_id`)).toHaveLength(0);
   });
+
+  it("feeds the dashboard and reports", async () => {
+    const { seed } = await import("@/lib/db/seed");
+    const { getLibraryStats, getReport, getLoanRows, getFineRows } = await import("@/lib/stats");
+    await seed(db, { reset: true });
+    const central = (await db.query.libraries.findFirst({ where: (l, { eq: is }) => is(l.slug, "central") }))!;
+
+    const stats = await getLibraryStats(central.id);
+    expect(stats).toMatchObject({ titles: 40, onLoan: 11, overdue: 3 });
+
+    for (const days of [30, 90, 365] as const) {
+      const report = await getReport(central.id, days);
+      expect(report.summary.loans).toBeGreaterThan(0);
+      expect(report.periods.reduce((s, p) => s + p.loans, 0)).toBe(report.summary.loans);
+      expect(report.summary.finesOutstanding).toBeGreaterThan(0);
+    }
+    expect((await getLoanRows(central.id, 90)).length).toBe((await getReport(central.id, 90)).summary.loans);
+    expect((await getFineRows(central.id, 365)).length).toBeGreaterThan(0);
+  });
 });

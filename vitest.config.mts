@@ -17,5 +17,7 @@ export default defineConfig({
     // Each file gets its own in-memory Postgres; booting it and migrating takes a moment.
     testTimeout: 20_000,
     hookTimeout: 60_000,
+    // Against a shared Postgres server (TEST_DATABASE_URL), test files must take turns.
+    fileParallelism: !process.env.TEST_DATABASE_URL,
   },
 });

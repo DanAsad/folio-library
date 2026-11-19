@@ -185,7 +185,7 @@ tests/                     Vitest suites
 npm test
 ```
 
-48 tests run in about 3 seconds with [Vitest](https://vitest.dev), and [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, tests and a production build on every push. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
+49 tests run in about 3 seconds with [Vitest](https://vitest.dev). [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, a production build and the tests twice on every push: once on the embedded database, and once on a real Postgres server through the same driver production uses. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
 
 | Area | What is checked |
 | --- | --- |
@@ -196,5 +196,5 @@ npm test
 | Waitlist | Queue order and position, duplicates refused, reservation for the pickup window with notification, reserved copy blocked for others, expiry and cancellation pass it on |
 | Tenancy | Search, book pages and circulation see only the current library; only members can borrow |
 | Reminders | Due-soon and overdue reminders created once however often the job runs |
-| Seed & migrations | Seed data is consistent and resets identically; migrations upgrade a populated single-library database without losing data |
+| Seed, reports & migrations | Seed data is consistent and resets identically; dashboard and report queries add up; migrations upgrade a populated single-library database without losing data |
 | Fine maths, permissions, CSV | Calendar days late, grace, cap; access per role; CSV round-trips |
