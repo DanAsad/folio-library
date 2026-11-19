@@ -1,0 +1,108 @@
+import Link from "next/link";
+import { Download, Plus, SearchX, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookGrid, BookTable } from "@/components/books/book-views";
+import { EmptyState, PageHeader } from "@/components/books/bits";
+import { aiEnabled } from "@/lib/ai";
+import { getGenres, searchBooks, SEARCH_FIELDS, SORTS, type BookSearch, type SearchField, type Sort } from "@/lib/library";
+import { can } from "@/lib/permissions";
+import { requireUser } from "@/lib/session";
+import { CatalogToolbar } from "./catalog-toolbar";
+import { ImportCsvButton } from "./import-csv";
+
+export const metadata = { title: "Catalogue" };
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function CataloguePage({ searchParams }: PageProps<"/books">) {
+  const user = await requireUser();
+  const sp = await searchParams;
+  const q = one(sp.q)?.trim() ?? "";
+  const field = (SEARCH_FIELDS as readonly string[]).includes(one(sp.field) ?? "") ? (one(sp.field) as SearchField) : "all";
+  const sortParam = one(sp.sort);
+  const sort = (SORTS as readonly string[]).includes(sortParam ?? "") ? (sortParam as Sort) : undefined;
+  const view = one(sp.view) === "table" ? "table" : "grid";
+  // Smart search runs in the browser (free AI); it puts its interpretation in the URL:
+  // ai=1 & q=<original request> & why=<explanation> & kw=<keywords> & from/to=<years>.
+  const interpretation = one(sp.ai) === "1" && q ? one(sp.why)?.slice(0, 200) || null : null;
+  const year = (v: string | undefined) => (v && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
+
+  const genres = await getGenres();
+  const filters: BookSearch = {
+    q: interpretation ? one(sp.kw)?.trim() || undefined : q,
+    field: interpretation ? "all" : field,
+    genre: one(sp.genre) || undefined,
+    availableOnly: one(sp.available) === "1",
+    yearFrom: interpretation ? year(one(sp.from)) : undefined,
+    yearTo: interpretation ? year(one(sp.to)) : undefined,
+    sort,
+  };
+
+  let books = await searchBooks(filters);
+  const wantsAi = Boolean(interpretation);
+  // If smart filters were too strict, relax keywords before giving up.
+  if (wantsAi && interpretation && books.length === 0 && filters.q) {
+    books = await searchBooks({ ...filters, q: undefined });
+  }
+
+  const staff = can(user.role, "books:manage");
+  const chips = interpretation
+    ? [
+        filters.genre && `Genre: ${filters.genre}`,
+        (filters.yearFrom || filters.yearTo) && `Published ${filters.yearFrom ?? "…"}–${filters.yearTo ?? "now"}`,
+        filters.availableOnly && "Available now",
+        filters.q && `Keywords: “${filters.q}”`,
+      ].filter(Boolean)
+    : [];
+
+  return (
+    <>
+      <PageHeader
+        title="Catalogue"
+        description={`${books.length} ${books.length === 1 ? "book" : "books"}${q ? ` matching “${q}”` : " in the collection"}`}
+        actions={
+          staff && (
+            <>
+              <ImportCsvButton />
+              <Button variant="outline" size="sm" asChild>
+                <a href="/api/books/export" download>
+                  <Download /> Export CSV
+                </a>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/books/new">
+                  <Plus /> Add book
+                </Link>
+              </Button>
+            </>
+          )
+        }
+      />
+
+      <CatalogToolbar genres={genres} aiAvailable={aiEnabled()} />
+
+      {interpretation && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-accent/50 px-4 py-3 text-sm">
+          <Sparkles className="size-4 text-primary" />
+          <span className="text-accent-foreground">{interpretation}</span>
+          {chips.map((c) => (
+            <span key={String(c)} className="rounded-full bg-background/80 px-2 py-0.5 text-xs font-medium">
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mt-6">
+        {books.length === 0 ? (
+          <EmptyState icon={<SearchX className="size-5" />} title="No books found">
+            Try fewer words, a different field, or turn on <strong>Smart search</strong> and describe what you&apos;re looking for.
+          </EmptyState>
+        ) : view === "table" ? (
+          <BookTable books={books} />
+        ) : (
+          <BookGrid books={books} />
+        )}
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,230 @@
+{
+  "1984": {
+    "isbn": "9780582777316",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8745958-L.jpg",
+    "pages": 72,
+    "publisher": "Pearson Education"
+  },
+  "To Kill a Mockingbird": {
+    "isbn": "9781784870799",
+    "coverUrl": "https://covers.openlibrary.org/b/id/14351077-L.jpg",
+    "pages": 320,
+    "publisher": "Warner Books"
+  },
+  "Pride and Prejudice": {
+    "isbn": "9781722761394",
+    "coverUrl": "https://covers.openlibrary.org/b/id/14348537-L.jpg",
+    "pages": 351,
+    "publisher": "Century Hutchinson"
+  },
+  "The Great Gatsby": {
+    "isbn": "9786059585330",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10590366-L.jpg",
+    "pages": 185,
+    "publisher": "Ediciones Larousse"
+  },
+  "One Hundred Years of Solitude": {
+    "publisher": "Blackstone Audio, Inc."
+  },
+  "Beloved": {
+    "isbn": "9780517012093",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8261367-L.jpg",
+    "pages": 321,
+    "publisher": "Knopf Incorporated, Alfred A."
+  },
+  "The Catcher in the Rye": {
+    "isbn": "9780140237498",
+    "coverUrl": "https://covers.openlibrary.org/b/id/9273490-L.jpg",
+    "pages": 240,
+    "publisher": "Ishi Press International"
+  },
+  "Brave New World": {
+    "isbn": "9780060120351",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8231823-L.jpg",
+    "pages": 241,
+    "publisher": "Longman Pub Group"
+  },
+  "Dune": {
+    "isbn": "9780450000898",
+    "coverUrl": "https://covers.openlibrary.org/b/id/11481354-L.jpg",
+    "pages": 607,
+    "publisher": "Robert Laffont"
+  },
+  "The Left Hand of Darkness": {
+    "isbn": "9783453050266",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10618463-L.jpg",
+    "pages": 304,
+    "publisher": "Walker and Company New York"
+  },
+  "Neuromancer": {
+    "isbn": "9780441000685",
+    "coverUrl": "https://covers.openlibrary.org/b/id/283860-L.jpg",
+    "pages": 317,
+    "publisher": "Harper Collins Publishers"
+  },
+  "The Martian": {
+    "isbn": "9780606367202",
+    "coverUrl": "https://covers.openlibrary.org/b/id/11447888-L.jpg",
+    "pages": 407,
+    "publisher": "Crown Publishing"
+  },
+  "Project Hail Mary": {
+    "isbn": "9788418037016",
+    "coverUrl": "https://covers.openlibrary.org/b/id/11200092-L.jpg",
+    "pages": 496,
+    "publisher": "RHK"
+  },
+  "Foundation": {
+    "isbn": "9780593497487",
+    "coverUrl": "https://covers.openlibrary.org/b/id/14612610-L.jpg",
+    "pages": 240,
+    "publisher": "Harper Collins Promotion"
+  },
+  "The Three-Body Problem": {
+    "isbn": "9781784971588",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10526598-L.jpg",
+    "pages": 562,
+    "publisher": "Tor Trade"
+  },
+  "Snow Crash": {
+    "isbn": "9783442236862",
+    "coverUrl": "https://covers.openlibrary.org/b/id/392508-L.jpg",
+    "pages": 460,
+    "publisher": "Goldmann"
+  },
+  "Hyperion": {
+    "isbn": "9780575099432",
+    "coverUrl": "https://covers.openlibrary.org/b/id/380332-L.jpg",
+    "pages": 481,
+    "publisher": "Audio Literature"
+  },
+  "The Hobbit": {
+    "isbn": "9788422615866",
+    "coverUrl": "https://covers.openlibrary.org/b/id/14627509-L.jpg",
+    "pages": 310,
+    "publisher": "OLMA PRESS Education"
+  },
+  "A Wizard of Earthsea": {
+    "isbn": "9788374692274",
+    "coverUrl": "https://covers.openlibrary.org/b/id/13617691-L.jpg",
+    "pages": 205,
+    "publisher": "Heinemann Educational Publishers"
+  },
+  "The Name of the Wind": {
+    "isbn": "9780756404079",
+    "coverUrl": "https://covers.openlibrary.org/b/id/11480483-L.jpg",
+    "pages": 736,
+    "publisher": "DAW BOOKS"
+  },
+  "Mistborn: The Final Empire": {
+    "isbn": "9780765399557",
+    "publisher": "Doherty Associates, LLC, Tom"
+  },
+  "Circe": {
+    "isbn": "9781408890042",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8739376-L.jpg",
+    "pages": 404,
+    "publisher": "Hachette Book Group USA"
+  },
+  "The Hound of the Baskervilles": {
+    "isbn": "9781092383813",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8063264-L.jpg",
+    "pages": 207,
+    "publisher": "LATIN BOOK"
+  },
+  "And Then There Were None": {
+    "isbn": "9781535068154",
+    "coverUrl": "https://covers.openlibrary.org/b/id/11172296-L.jpg",
+    "pages": 222,
+    "publisher": "Perfect Bound"
+  },
+  "Gone Girl": {
+    "isbn": "9780385366755",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8368314-L.jpg",
+    "pages": 475,
+    "publisher": "Crown Publishing"
+  },
+  "The Girl with the Dragon Tattoo": {
+    "isbn": "9788901116150",
+    "publisher": "Pul"
+  },
+  "Sapiens": {
+    "isbn": "9788466361903",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8634250-L.jpg",
+    "pages": 456,
+    "publisher": "Pantheon"
+  },
+  "A Brief History of Time": {
+    "isbn": "9780716726487",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10432365-L.jpg",
+    "pages": 241,
+    "publisher": "Nanhai chu ban gong si"
+  },
+  "Thinking, Fast and Slow": {
+    "isbn": "9789863200611",
+    "coverUrl": "https://covers.openlibrary.org/b/id/13290711-L.jpg",
+    "pages": 528,
+    "publisher": "Business Contact"
+  },
+  "Educated": {
+    "isbn": "9780525528050",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8314077-L.jpg",
+    "pages": 384,
+    "publisher": "Kiepenheuer & Witsch GmbH"
+  },
+  "The Immortal Life of Henrietta Lacks": {
+    "isbn": "9780804190107",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8364866-L.jpg",
+    "pages": 381,
+    "publisher": "Calmann-Lévy"
+  },
+  "Atomic Habits": {
+    "isbn": "9789390085255",
+    "coverUrl": "https://covers.openlibrary.org/b/id/12539702-L.jpg",
+    "pages": 322,
+    "publisher": "Random House, Incorporated"
+  },
+  "Clean Code": {
+    "isbn": "9783826655487",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8065615-L.jpg",
+    "pages": 444,
+    "publisher": "PEARSON"
+  },
+  "The Pragmatic Programmer": {
+    "isbn": "9785342616224",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10143650-L.jpg",
+    "pages": 352,
+    "publisher": "PEARSON INDIA"
+  },
+  "Designing Data-Intensive Applications": {
+    "isbn": "9783960090755",
+    "coverUrl": "https://covers.openlibrary.org/b/id/8434671-L.jpg",
+    "pages": 618,
+    "publisher": "Marcombo"
+  },
+  "The Design of Everyday Things": {},
+  "The Kite Runner": {
+    "isbn": "9780747573395",
+    "coverUrl": "https://covers.openlibrary.org/b/id/14846827-L.jpg",
+    "pages": 371,
+    "publisher": "BvT Berliner Taschenbuch Verlags GmbH"
+  },
+  "The Road": {
+    "isbn": "9789707809284",
+    "coverUrl": "https://covers.openlibrary.org/b/id/198120-L.jpg",
+    "pages": 256,
+    "publisher": "Center Point Large Print"
+  },
+  "Klara and the Sun": {
+    "isbn": "9780593319925",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10648686-L.jpg",
+    "pages": 334,
+    "publisher": "Knopf Doubleday Publishing Group"
+  },
+  "The Midnight Library": {
+    "isbn": "9781786892706",
+    "coverUrl": "https://covers.openlibrary.org/b/id/10313767-L.jpg",
+    "pages": 304,
+    "publisher": "ABDR "
+  }
+}
