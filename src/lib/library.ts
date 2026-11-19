@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { getDb, type DB } from "@/lib/db/client";
 import { activity, books, copies, fines, holds, libraries, loans, memberships, reviews, users, type CopyCondition, type Library } from "@/lib/db/schema";
 import { formatMoney, overdueFineCents } from "@/lib/money";
@@ -636,10 +636,17 @@ export async function placeHold({ libraryId, bookId, userId }: { libraryId: stri
       message: `${member?.name ?? "A member"} joined the waitlist for “${book.title}”`,
     });
     await processHoldQueue(tx, bookId);
+    // Compare inside SQL: Postgres keeps microseconds, a JavaScript Date only milliseconds.
     const position = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(holds)
-      .where(and(eq(holds.bookId, bookId), eq(holds.status, "waiting"), lte(holds.createdAt, hold.createdAt)));
+      .where(
+        and(
+          eq(holds.bookId, bookId),
+          eq(holds.status, "waiting"),
+          sql`${holds.createdAt} <= (select h2.created_at from holds h2 where h2.id = ${hold.id})`,
+        ),
+      );
     return { title: book.title, position: position[0].n };
   });
 }
