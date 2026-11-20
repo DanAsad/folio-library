@@ -138,7 +138,7 @@ export function AddPersonDialog({ libraryName }: { libraryName: string }) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add someone to {libraryName}</DialogTitle>
-          <DialogDescription>They get access by signing in with Google or GitHub using this email address.</DialogDescription>
+          <DialogDescription>Creates a member record so staff can lend books to them at the desk. Only the demo accounts can sign in.</DialogDescription>
         </DialogHeader>
         <form
           id="person-form"

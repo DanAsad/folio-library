@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { BookOpenCheck, Building2, Sparkles, ScanBarcode, ShieldCheck } from "lucide-react";
-import { DEMO_MODE, ssoProviders } from "@/auth";
 import { getCurrentUser } from "@/lib/session";
 import { getDb } from "@/lib/db/client";
 import { searchBooks } from "@/lib/library";
@@ -31,7 +30,7 @@ export default async function LoginPage() {
             <li className="flex items-center gap-3"><BookOpenCheck className="size-4" /> Borrow, return, renew and waitlists, with due dates</li>
             <li className="flex items-center gap-3"><Sparkles className="size-4" /> Natural-language search and personal recommendations</li>
             <li className="flex items-center gap-3"><ScanBarcode className="size-4" /> Add books by scanning a barcode or typing an ISBN</li>
-            <li className="flex items-center gap-3"><ShieldCheck className="size-4" /> SSO sign-in with admin, librarian and member roles</li>
+            <li className="flex items-center gap-3"><ShieldCheck className="size-4" /> Admin, librarian and member roles, set per library</li>
             <li className="flex items-center gap-3"><Building2 className="size-4" /> Several libraries, each with its own catalogue, rules and fines</li>
           </ul>
         </div>
@@ -47,7 +46,7 @@ export default async function LoginPage() {
       {/* Sign-in panel */}
       <section className="flex flex-col items-center justify-center gap-8 px-4 py-12 sm:px-8">
         <Logo href="/login" className="lg:hidden" />
-        <LoginCard demoMode={DEMO_MODE} google={ssoProviders.google} github={ssoProviders.github} />
+        <LoginCard />
         <p className="max-w-sm text-center text-xs text-muted-foreground">
           Demo accounts share two sample libraries, so feel free to borrow, return and edit. Everything resets to the sample data every night at 04:00 UTC.
         </p>

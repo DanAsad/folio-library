@@ -460,6 +460,21 @@ describe("demo seed", () => {
     expect(await rows(sql`select h.id from holds h join books b on b.id = h.book_id where h.library_id <> b.library_id`)).toHaveLength(0);
   });
 
+  it("removes non-demo accounts on reset and keeps the demo accounts' ids", async () => {
+    const { seed, DEMO_LOGINS } = await import("@/lib/db/seed");
+    await seed(db, { reset: true });
+    const demoIds = await rows(sql`select id from users where is_demo order by email`);
+    const lib = (await db.query.libraries.findFirst())!;
+    await makeUser(db, lib.id, "admin"); // e.g. someone an admin added during the day
+
+    await seed(db, { reset: true });
+    expect(await rows(sql`select id from users where not is_demo`)).toHaveLength(0);
+    expect(await rows(sql`select id from users where is_demo order by email`)).toEqual(demoIds);
+    for (const email of Object.values(DEMO_LOGINS)) {
+      expect(await rows(sql`select u.id from users u join memberships m on m.user_id = u.id where u.email = ${email}`)).not.toHaveLength(0);
+    }
+  });
+
   it("feeds the dashboard and reports", async () => {
     const { seed } = await import("@/lib/db/seed");
     const { getLibraryStats, getReport, getLoanRows, getFineRows } = await import("@/lib/stats");

@@ -77,8 +77,8 @@ export async function setUserRole(userId: string, role: string) {
 }
 
 /**
- * Adds a person to the current library. If they don't have an account yet, one is created
- * for their email; they get access by signing in with SSO using that email.
+ * Adds a person to the current library. If they don't have an account yet, a member record is
+ * created for their email, so staff can lend to them at the desk. Only demo accounts can sign in.
  */
 export async function addPerson(input: z.input<typeof personInput>) {
   return run(async () => {

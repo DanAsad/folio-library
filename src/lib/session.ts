@@ -7,7 +7,7 @@ import { auth } from "@/auth";
 import { getDb } from "@/lib/db/client";
 import { libraries, memberships, users, type Library, type Role } from "@/lib/db/schema";
 import { can, type Permission } from "@/lib/permissions";
-import { ensureDefaultMembership, LIBRARY_COOKIE } from "@/lib/tenancy";
+import { LIBRARY_COOKIE } from "@/lib/tenancy";
 
 export type LibraryChoice = { id: string; name: string; tagline: string | null; role: Role };
 
@@ -39,15 +39,11 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!uid) return null;
   const db = await getDb();
   const account = await db.query.users.findFirst({ where: eq(users.id, uid) });
-  if (!account) return null;
+  // Only the pre-made demo accounts can use the app.
+  if (!account?.isDemo) return null;
 
-  let rows = await loadMemberships(uid);
-  if (!rows.length) {
-    // e.g. after the nightly demo reset: SSO users rejoin the default library.
-    await ensureDefaultMembership(db, account);
-    rows = await loadMemberships(uid);
-    if (!rows.length) return null;
-  }
+  const rows = await loadMemberships(uid);
+  if (!rows.length) return null;
   const wanted = (await cookies()).get(LIBRARY_COOKIE)?.value;
   const current = rows.find((r) => r.library.id === wanted) ?? rows[0];
 

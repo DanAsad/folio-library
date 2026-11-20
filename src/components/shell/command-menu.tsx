@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { BookOpen, Moon, Plus, Search, Sparkles } from "lucide-react";
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -64,13 +65,17 @@ export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Search books or jump to a page">
+      {/* The cmdk root must wrap the input and list; CommandDialog doesn't add it. */}
+      <Command>
       <CommandInput placeholder="Search books, authors, ISBN, or type a command…" value={query} onValueChange={setQuery} />
       <CommandList>
         <CommandEmpty>No matches. Press Enter to ask the AI librarian.</CommandEmpty>
         {query.trim() && hits.length > 0 && (
           <CommandGroup heading="Books">
             {hits.map((b) => (
-              <CommandItem key={b.id} value={`book-${b.id}-${b.title}-${b.author}`} onSelect={() => go(`/books/${b.id}`)}>
+              <CommandItem key={b.id} value={`book-${b.id}-${b.title}-${b.author}`}
+                keywords={[query]} // the server already matched it (ISBN, tags, barcode…), so never hide it
+                onSelect={() => go(`/books/${b.id}`)}>
                 <BookOpen />
                 <span className="truncate">
                   {b.title} <span className="text-muted-foreground">· {b.author}</span>
@@ -120,6 +125,7 @@ export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (
           </CommandItem>
         </CommandGroup>
       </CommandList>
+      </Command>
     </CommandDialog>
   );
 }

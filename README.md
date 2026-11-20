@@ -6,7 +6,7 @@ A small but complete library system: catalogue books and their physical copies, 
 
 **Live demo:** https://folio-library-zeta.vercel.app · **Source:** https://github.com/DanAsad/folio-library · **Design decisions:** [docs/DECISIONS.md](docs/DECISIONS.md)
 
-Sign in with GitHub, or pick a one-click demo account on the login page:
+Sign in with one of the pre-made accounts on the login page (one click, no password):
 
 | Demo account | Role | What to try |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ Sign in with GitHub, or pick a one-click demo account on the login page:
 
 The demo data **resets every night at 04:00 UTC** (admins can also reset it from *Library settings*), so feel free to change things.
 
-**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 + shadcn/ui · PostgreSQL (Drizzle ORM; Neon in production, embedded PGlite locally) · Auth.js (Google / GitHub SSO + demo accounts) · free open-source AI (GPT-OSS 20B through Pollinations; no account or API key) · Open Library API · Vitest · GitHub Actions · Vercel (hosting + cron).
+**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 + shadcn/ui · PostgreSQL (Drizzle ORM; Neon in production, embedded PGlite locally) · Auth.js (pre-made demo accounts) · free open-source AI (GPT-OSS 20B through Pollinations; no account or API key) · Open Library API · Vitest · GitHub Actions · Vercel (hosting + cron).
 
 ---
 
@@ -60,7 +60,7 @@ To enable optional features, copy `.env.example` to `.env` and fill in what you 
 - A **library switcher** in the sidebar. Everything (catalogue, copies, loans, holds, fines, members, reports and the activity log) belongs to one library, and nothing leaks between them.
 - **Roles are per library**: the same person can be a librarian at one branch and a member at another.
 - **Rules per library**, set by its admins: loan period, books at a time, renewals, hold pickup window, daily fine, grace days, fine cap, lost-item fee, the balance at which borrowing pauses, and currency.
-- Admins can **open a new library** with its own barcode prefix, and **add people** by email (they get in by signing in with that email through SSO).
+- Admins can **open a new library** with its own barcode prefix, and **add people** by email as member records, so staff can lend to them at the desk.
 
 ### Fines
 - **Late fees are charged automatically** at check-in: per calendar day late, after the grace period, capped per loan. A lost copy charges the lost-item fee. Staff can add a fee for damage.
@@ -77,8 +77,7 @@ To enable optional features, copy `.env.example` to `.env` and fill in what you 
 - **CSV exports**: a summary by week or month, every loan, and every fine.
 
 ### Authentication and roles
-- **SSO** with Google and GitHub through Auth.js. A new account joins the main library as a member; `ADMIN_EMAILS` makes chosen emails admins.
-- **One-click demo accounts** for each role, so reviewers can try everything without an SSO account. Turn them off with `DEMO_MODE=false`.
+- **Sign-in is limited to pre-made accounts**: one per role, one click, no passwords and no sign-up, so the demo can't be used to create accounts. Sessions are Auth.js JWTs, and each request checks that the account still exists and is a demo account.
 - **Role-based permissions** (`src/lib/permissions.ts`), checked against your role *in the current library* in every server action, API route and protected page, not just hidden in the UI:
 
 | | Member | Librarian | Admin |
@@ -126,10 +125,7 @@ All variables are optional locally. See `.env.example`.
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string (e.g. Neon). Empty means the embedded PGlite database. |
 | `AUTH_SECRET` | Session encryption secret. **Required in production** (`npx auth secret`). |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Enables "Continue with Google". Redirect URI: `<url>/api/auth/callback/google` |
-| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | Enables "Continue with GitHub". Callback URL: `<url>/api/auth/callback/github` |
-| `ADMIN_EMAILS` | Comma-separated emails that become admins of the main library on SSO sign-in |
-| `DEMO_MODE` | `false` hides the demo accounts and disables demo resets |
+| `DEMO_MODE` | `false` disables demo resets (the nightly job and the button in Library settings) |
 | `CRON_SECRET` | Protects the daily job (`/api/cron/daily`). Vercel sends it automatically when set. |
 | `DEMO_RESET` | `false` keeps the daily job from resetting demo data |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Optional: email notifications through [Resend](https://resend.com) |
@@ -140,9 +136,8 @@ All variables are optional locally. See `.env.example`.
 
 1. Push the repo to GitHub and import it in Vercel.
 2. Create a free Postgres database (Neon, from the Vercel Marketplace or neon.tech) and set `DATABASE_URL`.
-3. Set `AUTH_SECRET`, `CRON_SECRET`, plus the SSO variables you want. The AI needs no setup.
+3. Set `AUTH_SECRET` and `CRON_SECRET`. The AI needs no setup.
 4. Deploy. The `vercel-build` script runs `db:setup` (migrations and seed-if-empty) before `next build`. If `DATABASE_URL` is missing, the build stops with a clear error instead of shipping a site without a database.
-5. Add `https://<your-app>.vercel.app/api/auth/callback/google` (and `/github`) to your OAuth apps.
 
 The daily job is registered from `vercel.json`. Migrations are written to run safely on a database that already has data (see `tests/migrations.test.ts`).
 
@@ -151,7 +146,7 @@ The daily job is registered from `vercel.json`. Migrations are written to run sa
 ```
 src/
   app/
-    login/                 Sign-in page (SSO + demo roles)
+    login/                 Sign-in page (pre-made accounts)
     (app)/                 Signed-in area with the sidebar layout
       dashboard/           Member & librarian dashboards, charts, AI picks
       books/               Catalogue, book detail with copies, add/edit, CSV import
@@ -185,7 +180,7 @@ tests/                     Vitest suites
 npm test
 ```
 
-49 tests run in about 3 seconds with [Vitest](https://vitest.dev). [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, a production build and the tests twice on every push: once on the embedded database, and once on a real Postgres server through the same driver production uses. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
+50 tests run in about 3 seconds with [Vitest](https://vitest.dev). [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, a production build and the tests twice on every push: once on the embedded database, and once on a real Postgres server through the same driver production uses. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
 
 | Area | What is checked |
 | --- | --- |

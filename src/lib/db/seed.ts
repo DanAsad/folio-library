@@ -145,12 +145,12 @@ function rng(seed: number) {
 const DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Wipes all library data (libraries cascade to everything else) but keeps user accounts,
- * so people who signed in with SSO keep their login. They are re-added to the default
- * library automatically on their next visit.
+ * Wipes all library data and every account except the demo ones (people added by admins
+ * during the day), so the seed starts from a clean slate. Demo accounts keep their ids.
  */
 export async function resetLibraryData(db: DB) {
   await db.execute(sql`TRUNCATE libraries, memberships, books, copies, loans, holds, fines, notifications, reviews, activity RESTART IDENTITY CASCADE`);
+  await db.execute(sql`DELETE FROM users WHERE NOT is_demo`);
 }
 
 export async function seed(db: DB, { reset = false }: { reset?: boolean } = {}) {

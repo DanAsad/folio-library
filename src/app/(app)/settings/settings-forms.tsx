@@ -196,8 +196,7 @@ export function ResetDemoButton() {
         <AlertDialogHeader>
           <AlertDialogTitle>Reset all demo data?</AlertDialogTitle>
           <AlertDialogDescription>
-            Every library is restored to the sample catalogue, loans, fines and waitlists. Changes anyone made are lost. Accounts that signed in with SSO keep their
-            login and rejoin the main library.
+            Every library is restored to the sample catalogue, loans, fines and waitlists. Changes anyone made are lost, and people added by admins are removed.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
