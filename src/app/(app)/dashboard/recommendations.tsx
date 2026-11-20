@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { loans, reviews } from "@/lib/db/schema";
 import { searchBooks } from "@/lib/library";
 import { PicksPanel, type PickBook } from "./picks-panel";
+import { getI18n } from "@/i18n/server";
 
 /**
  * "Picked for you": instant picks from the reader's favourite genres, which the reader can
@@ -12,6 +13,7 @@ import { PicksPanel, type PickBook } from "./picks-panel";
  */
 export async function Recommendations({ userId, libraryId }: { userId: string; libraryId: string }) {
   const db = await getDb();
+  const { t, locale } = await getI18n();
   const [history, myReviews, catalogue] = await Promise.all([
     db.query.loans.findMany({ where: and(eq(loans.libraryId, libraryId), eq(loans.userId, userId)), with: { book: true }, orderBy: desc(loans.borrowedAt), limit: 30 }),
     db.query.reviews.findMany({ where: eq(reviews.userId, userId) }),
@@ -50,11 +52,13 @@ export async function Recommendations({ userId, libraryId }: { userId: string; l
     .slice(0, 4)
     .map((book) => ({
       book,
-      reason: book.genre && fav.includes(book.genre) ? `You've enjoyed ${book.genre.toLowerCase()} before. This one is a reader favourite.` : "Popular with other members right now.",
+      reason: book.genre && fav.includes(book.genre) ? t("picks.reasonGenre", { genre: book.genre }) : t("picks.reasonPopular"),
     }));
 
   return (
     <PicksPanel
+      // Start over when the language changes: the panel keeps its picks in state.
+      key={locale}
       initial={initial}
       candidates={candidates.slice(0, 60)}
       history={uniqueHistory.map((l) => ({ title: l.book.title, author: l.book.author, genre: l.book.genre, rating: ratings.get(l.bookId) ?? null }))}
@@ -63,11 +67,12 @@ export async function Recommendations({ userId, libraryId }: { userId: string; l
   );
 }
 
-export function RecommendationsSkeleton() {
+export async function RecommendationsSkeleton() {
+  const { t } = await getI18n();
   return (
     <section className="space-y-4">
       <h2 className="flex items-center gap-2 text-xl font-semibold">
-        <Sparkles className="size-5 animate-pulse text-primary" /> Picked for you
+        <Sparkles className="size-5 animate-pulse text-primary" /> {t("picks.title")}
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
         {[0, 1, 2, 3].map((i) => (

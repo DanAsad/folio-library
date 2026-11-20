@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { format } from "date-fns";
 import { Archive, Loader2, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { addCopiesToBook, editCopy } from "@/lib/actions/books";
 import type { ActionResult } from "@/lib/actions/result";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 const CONDITIONS = ["new", "good", "fair", "poor", "damaged"] as const;
 const CONDITION_TONE: Record<string, string> = {
@@ -48,6 +48,7 @@ function useRun() {
 
 export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copies: CopyRow[]; canEdit: boolean }) {
   const { pending, key, run } = useRun();
+  const { t, date } = useI18n();
   const [count, setCount] = useState("1");
   const [condition, setCondition] = useState("new");
   const inCirculation = copies.filter((c) => c.status === "active");
@@ -62,38 +63,38 @@ export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copie
         <TableCell>
           {canEdit && c.status === "active" ? (
             <Select value={c.condition} onValueChange={(v) => run(c.id, () => editCopy(c.id, { condition: v as (typeof CONDITIONS)[number] }))} disabled={pending}>
-              <SelectTrigger size="sm" className="h-7 w-28 capitalize">
+              <SelectTrigger size="sm" className="h-7 w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {CONDITIONS.map((k) => (
-                  <SelectItem key={k} value={k} className="capitalize">
-                    {k}
+                  <SelectItem key={k} value={k}>
+                    {t(`conditions.${k}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           ) : (
-            <Badge className={cn("capitalize", CONDITION_TONE[c.condition])}>{c.condition}</Badge>
+            <Badge className={CONDITION_TONE[c.condition]}>{t(`conditions.${c.condition as (typeof CONDITIONS)[number]}`)}</Badge>
           )}
         </TableCell>
         <TableCell className="text-sm">
           {c.status === "lost" ? (
             <Badge variant="outline" className="border-destructive/40 text-destructive">
-              Lost
+              {t("copyStatus.lost")}
             </Badge>
           ) : c.status === "withdrawn" ? (
-            <Badge variant="outline">Withdrawn</Badge>
+            <Badge variant="outline">{t("copyStatus.withdrawn")}</Badge>
           ) : c.loan ? (
             <span className={cn(overdue ? "font-medium text-destructive" : "text-muted-foreground")}>
-              {c.loan.member} · {overdue ? "overdue since" : "due"} {format(new Date(c.loan.dueAt), "MMM d")}
+              {c.loan.member} · {t(overdue ? "copies.overdueSince" : "copies.due", { date: new Date(c.loan.dueAt) })}
             </span>
           ) : (
-            <span className="text-success">On the shelf</span>
+            <span className="text-success">{t("copies.onShelf")}</span>
           )}
           {c.note && <p className="text-xs text-muted-foreground">{c.note}</p>}
         </TableCell>
-        <TableCell className="hidden text-sm text-muted-foreground md:table-cell">{format(new Date(c.acquiredAt), "MMM yyyy")}</TableCell>
+        <TableCell className="hidden text-sm text-muted-foreground md:table-cell">{date(c.acquiredAt, "monthYear")}</TableCell>
         {canEdit && (
           <TableCell className="text-right">
             {c.status === "active" ? (
@@ -101,14 +102,14 @@ export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copie
                 size="sm"
                 variant="ghost"
                 disabled={pending || Boolean(c.loan)}
-                title={c.loan ? "Check the copy in first" : "Take this copy out of circulation"}
-                onClick={() => run(c.id, () => editCopy(c.id, { status: "withdrawn", note: c.note ?? `Withdrawn ${format(new Date(), "MMM d, yyyy")}` }))}
+                title={c.loan ? t("copies.checkInFirst") : t("copies.withdrawTip")}
+                onClick={() => run(c.id, () => editCopy(c.id, { status: "withdrawn" }))}
               >
-                {busy ? <Loader2 className="animate-spin" /> : <Archive />} Withdraw
+                {busy ? <Loader2 className="animate-spin" /> : <Archive />} {t("copies.withdraw")}
               </Button>
             ) : (
               <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(c.id, () => editCopy(c.id, { status: "active", note: null }))}>
-                {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />} {c.status === "lost" ? "Found it" : "Restore"}
+                {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />} {c.status === "lost" ? t("copies.found") : t("copies.restore")}
               </Button>
             )}
           </TableCell>
@@ -129,27 +130,27 @@ export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copie
         >
           <div className="space-y-1">
             <label htmlFor="copy-count" className="text-xs text-muted-foreground">
-              New copies
+              {t("copies.newCopies")}
             </label>
             <Input id="copy-count" type="number" min={1} max={50} value={count} onChange={(e) => setCount(e.target.value)} className="h-8 w-20" />
           </div>
           <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Condition</span>
+            <span className="text-xs text-muted-foreground">{t("copies.condition")}</span>
             <Select value={condition} onValueChange={setCondition}>
-              <SelectTrigger size="sm" className="h-8 w-28 capitalize">
+              <SelectTrigger size="sm" className="h-8 w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {CONDITIONS.map((k) => (
-                  <SelectItem key={k} value={k} className="capitalize">
-                    {k}
+                  <SelectItem key={k} value={k}>
+                    {t(`conditions.${k}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <Button type="submit" size="sm" disabled={pending}>
-            {pending && key === "add" ? <Loader2 className="animate-spin" /> : <Plus />} Add with new barcodes
+            {pending && key === "add" ? <Loader2 className="animate-spin" /> : <Plus />} {t("copies.add")}
           </Button>
         </form>
       )}
@@ -158,11 +159,11 @@ export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copie
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead>Barcode</TableHead>
-              <TableHead>Condition</TableHead>
-              <TableHead>Where it is</TableHead>
-              <TableHead className="hidden md:table-cell">Acquired</TableHead>
-              {canEdit && <TableHead className="text-right">Actions</TableHead>}
+              <TableHead>{t("copies.barcode")}</TableHead>
+              <TableHead>{t("copies.condition")}</TableHead>
+              <TableHead>{t("copies.where")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("copies.acquired")}</TableHead>
+              {canEdit && <TableHead className="text-right">{t("copies.actions")}</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -172,7 +173,9 @@ export function CopiesPanel({ bookId, copies, canEdit }: { bookId: string; copie
         </Table>
       </div>
       <p className="text-xs text-muted-foreground">
-        {inCirculation.length} in circulation{retired.length ? `, ${retired.length} lost or withdrawn` : ""}. Search the catalogue by barcode to find any copy.
+        {retired.length
+          ? t("copies.summaryRetired", { count: inCirculation.length, retired: retired.length })
+          : t("copies.summary", { count: inCirculation.length })}
       </p>
     </div>
   );

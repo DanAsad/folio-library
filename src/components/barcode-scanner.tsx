@@ -5,6 +5,7 @@ import { CameraOff, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/client";
 
 type Detector = { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
 
@@ -23,12 +24,13 @@ export function BarcodeScannerDialog({
   onOpenChange: (o: boolean) => void;
   onDetected: (isbn: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Scan a barcode</DialogTitle>
-          <DialogDescription>Point your camera at the ISBN barcode on the back of the book.</DialogDescription>
+          <DialogTitle>{t("scanner.title")}</DialogTitle>
+          <DialogDescription>{t("scanner.description")}</DialogDescription>
         </DialogHeader>
         {/* Mounted only while open, so the camera starts and stops with the dialog. */}
         {open && <Scanner onDetected={onDetected} />}
@@ -39,6 +41,7 @@ export function BarcodeScannerDialog({
 
 function Scanner({ onDetected }: { onDetected: (isbn: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { t } = useI18n();
   const [status, setStatus] = useState<"starting" | "scanning" | "error">("starting");
   const [manual, setManual] = useState("");
   const onDetectedRef = useRef(onDetected);
@@ -111,11 +114,11 @@ function Scanner({ onDetected }: { onDetected: (isbn: string) => void }) {
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-white/80">
             {status === "starting" ? (
               <>
-                <Loader2 className="size-6 animate-spin" /> Starting camera…
+                <Loader2 className="size-6 animate-spin" /> {t("scanner.starting")}
               </>
             ) : (
               <>
-                <CameraOff className="size-6" /> Camera unavailable. Allow camera access, or type the ISBN below.
+                <CameraOff className="size-6" /> {t("scanner.unavailable")}
               </>
             )}
           </div>
@@ -128,9 +131,9 @@ function Scanner({ onDetected }: { onDetected: (isbn: string) => void }) {
           if (manual.trim()) onDetected(manual.replace(/[-\s]/g, ""));
         }}
       >
-        <Input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="…or type an ISBN" inputMode="numeric" />
+        <Input value={manual} onChange={(e) => setManual(e.target.value)} placeholder={t("scanner.typeIsbn")} inputMode="numeric" />
         <Button type="submit" variant="secondary">
-          Use
+          {t("scanner.use")}
         </Button>
       </form>
     </>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 // Muted, bookish cloth colours for generated covers.
 const CLOTHS = [
@@ -35,6 +36,7 @@ export function BookCover({
   size?: "sm" | "md" | "lg";
 }) {
   const [failed, setFailed] = useState(false);
+  const { t } = useI18n();
   const showImage = coverUrl && !failed;
   const [bg, fg] = CLOTHS[hash(title + author) % CLOTHS.length];
 
@@ -49,7 +51,7 @@ export function BookCover({
         // eslint-disable-next-line @next/next/no-img-element -- covers come from arbitrary hosts
         <img
           src={coverUrl}
-          alt={`Cover of ${title}`}
+          alt={t("books.coverOf", { title })}
           loading="lazy"
           className="size-full object-cover"
           onError={() => setFailed(true)}
@@ -63,7 +65,7 @@ export function BookCover({
           className="flex size-full flex-col justify-between p-[9%]"
           style={{ background: `linear-gradient(160deg, ${bg}, color-mix(in oklch, ${bg} 70%, black))`, color: fg }}
           role="img"
-          aria-label={`Cover of ${title}`}
+          aria-label={t("books.coverOf", { title })}
         >
           <div className="h-px w-full opacity-50" style={{ background: fg }} />
           <div className="space-y-[6%] text-center">

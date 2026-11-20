@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { checkInBarcode } from "@/lib/actions/loans";
+import { useI18n } from "@/i18n/client";
 
 /**
  * Fast check-in at the desk: scan (USB scanners type like a keyboard and press Enter) or
  * type a copy's barcode. Optionally record the copy's condition as it comes back.
  */
 export function DeskCheckIn({ example }: { example?: string }) {
+  const { t } = useI18n();
   const [barcode, setBarcode] = useState("");
   const [condition, setCondition] = useState("unchanged");
   const [pending, start] = useTransition();
@@ -42,32 +44,32 @@ export function DeskCheckIn({ example }: { example?: string }) {
     >
       <ScanLine className="ml-1 size-5 text-primary" />
       <label htmlFor="desk-barcode" className="text-sm font-medium">
-        Check in
+        {t("bookActions.checkIn")}
       </label>
       <Input
         id="desk-barcode"
         ref={input}
         value={barcode}
         onChange={(e) => setBarcode(e.target.value.toUpperCase())}
-        placeholder={`Scan or type a copy barcode${example ? `, e.g. ${example}` : ""}`}
+        placeholder={example ? t("desk.placeholderExample", { example }) : t("desk.placeholder")}
         className="h-9 min-w-48 flex-1 font-mono"
         autoComplete="off"
       />
       <Select value={condition} onValueChange={setCondition}>
-        <SelectTrigger className="h-9 w-36" aria-label="Condition on return">
+        <SelectTrigger className="h-9 w-36" aria-label={t("desk.conditionLabel")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="unchanged">Condition as before</SelectItem>
-          {["good", "fair", "poor", "damaged"].map((c) => (
-            <SelectItem key={c} value={c} className="capitalize">
-              Now {c}
+          <SelectItem value="unchanged">{t("desk.unchanged")}</SelectItem>
+          {(["good", "fair", "poor", "damaged"] as const).map((c) => (
+            <SelectItem key={c} value={c}>
+              {t("desk.now", { condition: t(`conditions.${c}`) })}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <Button type="submit" disabled={pending || !barcode.trim()}>
-        {pending ? <Loader2 className="animate-spin" /> : <BookCheck />} Check in
+        {pending ? <Loader2 className="animate-spin" /> : <BookCheck />} {t("bookActions.checkIn")}
       </Button>
     </form>
   );

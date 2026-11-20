@@ -1,18 +1,23 @@
 import { and, desc, eq } from "drizzle-orm";
-import { format } from "date-fns";
 import { aiEnabled, librarianSystemPrompt } from "@/lib/ai";
 import { getDb } from "@/lib/db/client";
 import { loans } from "@/lib/db/schema";
 import { searchBooks } from "@/lib/library";
 import { requireUser } from "@/lib/session";
 import { Chat } from "./chat";
+import { getI18n } from "@/i18n/server";
+import { LANGUAGE_NAMES } from "@/lib/ai-client";
 
-export const metadata = { title: "Ask the Librarian" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("nav.assistant") };
+}
 
 export default async function AssistantPage({ searchParams }: PageProps<"/assistant">) {
   const user = await requireUser();
   const q = (await searchParams).q;
   const db = await getDb();
+  const i18n = await getI18n();
   const [catalogue, history] = await Promise.all([
     searchBooks({ libraryId: user.library.id, sort: "title", limit: 400 }),
     db.query.loans.findMany({
@@ -26,7 +31,8 @@ export default async function AssistantPage({ searchParams }: PageProps<"/assist
   // Only catalogue data and book titles go to the AI: no names or emails.
   const system = librarianSystemPrompt({
     library: user.library,
-    today: format(new Date(), "EEEE, MMMM d, yyyy"),
+    today: new Date().toDateString(),
+    language: LANGUAGE_NAMES[i18n.locale],
     catalogue: catalogue
       .map(
         (b) =>

@@ -11,7 +11,7 @@ export function aiEnabled() {
 import type { Library } from "@/lib/db/schema";
 import { formatMoney } from "@/lib/money";
 
-export function librarianSystemPrompt(ctx: { catalogue: string; history: string; today: string; library: Library }) {
+export function librarianSystemPrompt(ctx: { catalogue: string; history: string; today: string; library: Library; language: string }) {
   const l = ctx.library;
   const fines = l.finePerDayCents
     ? `late returns cost ${formatMoney(l.finePerDayCents, l.currency)} a day${l.fineGraceDays ? ` after a ${l.fineGraceDays}-day grace period` : ""}${l.maxFineCents ? ` (at most ${formatMoney(l.maxFineCents, l.currency)} per book)` : ""}, and a lost book costs ${formatMoney(l.lostItemFeeCents, l.currency)}`
@@ -20,6 +20,8 @@ export function librarianSystemPrompt(ctx: { catalogue: string; history: string;
 
 Help readers discover books in THIS library's catalogue, answer questions about books and authors, explain library rules,
 and suggest what to read next.
+
+Reply in ${ctx.language}. If the reader writes in another language, reply in theirs. Book titles stay as they appear in the catalogue.
 
 Strict rules:
 - Only recommend books that appear in the catalogue below. Never invent titles, and never mention books we don't have

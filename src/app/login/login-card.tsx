@@ -5,15 +5,16 @@ import { BookUser, Crown, Library, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { demoSignIn } from "@/lib/actions/auth";
 import type { Role } from "@/lib/db/schema";
-import { ROLE_DESCRIPTION } from "@/lib/permissions";
+import { useI18n } from "@/i18n/client";
 
 const DEMO_ROLES: { role: Role; name: string; icon: typeof Crown }[] = [
-  { role: "member", name: "Jordan · Member", icon: BookUser },
-  { role: "librarian", name: "Sam · Librarian", icon: Library },
-  { role: "admin", name: "Alex · Admin", icon: Crown },
+  { role: "member", name: "Jordan", icon: BookUser },
+  { role: "librarian", name: "Sam", icon: Library },
+  { role: "admin", name: "Alex", icon: Crown },
 ];
 
 export function LoginCard() {
+  const { t } = useI18n();
   const [pending, startTransition] = useTransition();
   const [active, setActive] = useState<Role | null>(null);
 
@@ -27,8 +28,8 @@ export function LoginCard() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="font-heading text-2xl">Welcome to Folio</CardTitle>
-        <CardDescription>Pick an account to sign in. Each one shows a different role.</CardDescription>
+        <CardTitle className="font-heading text-2xl">{t("login.welcome")}</CardTitle>
+        <CardDescription>{t("login.pick")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
         {DEMO_ROLES.map(({ role, name, icon: Icon }) => (
@@ -43,8 +44,10 @@ export function LoginCard() {
               {pending && active === role ? <Loader2 className="size-4 animate-spin" /> : <Icon className="size-4" />}
             </span>
             <span className="space-y-0.5">
-              <span className="block text-sm font-medium">{name}</span>
-              <span className="block text-xs text-muted-foreground">{ROLE_DESCRIPTION[role]}</span>
+              <span className="block text-sm font-medium">
+                {name} · {t(`roles.${role}`)}
+              </span>
+              <span className="block text-xs text-muted-foreground">{t(`roleDescriptions.${role}`)}</span>
             </span>
           </button>
         ))}

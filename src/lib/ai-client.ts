@@ -11,14 +11,22 @@ export const SORT_VALUES = ["relevance", "title", "author", "newest", "year", "p
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
+/** What went wrong, as a code the UI turns into a message in the reader's language (`ai.errors.*`). */
+export type AiErrorCode = "busy" | "noResponse" | "http" | "unexpected" | "noPicks" | "off" | "signIn" | "tooLong";
+
 export class AiError extends Error {
   constructor(
-    message: string,
-    public retryAfter?: number,
+    readonly code: AiErrorCode,
+    readonly retryAfter?: number,
+    readonly status?: number,
   ) {
-    super(message);
+    super(code);
   }
 }
+
+/** Language names for prompts ("Reply in French"). */
+export const LANGUAGE_NAMES = { en: "English", fr: "French", es: "Spanish", it: "Italian" } as const;
+export type AiLanguage = keyof typeof LANGUAGE_NAMES;
 
 // ---------------------------------------------------------------------------
 // Transport
@@ -33,7 +41,7 @@ export function aiWaitSeconds() {
 
 async function post(body: { messages: ChatMessage[]; json?: boolean; stream?: boolean }, timeoutMs: number, signal?: AbortSignal) {
   const wait = aiWaitSeconds();
-  if (wait > 0) throw new AiError(`The free AI is busy (it allows one reply every 45 seconds). Try again in ${wait}s.`, wait);
+  if (wait > 0) throw new AiError("busy", wait);
 
   let res: Response;
   try {
@@ -45,7 +53,7 @@ async function post(body: { messages: ChatMessage[]; json?: boolean; stream?: bo
     });
   } catch (err) {
     if (signal?.aborted) throw err;
-    throw new AiError("The free AI service didn't respond. Please try again in a moment.");
+    throw new AiError("noResponse");
   }
 
   if (!res.ok) {
@@ -53,9 +61,10 @@ async function post(body: { messages: ChatMessage[]; json?: boolean; stream?: bo
     if (res.status === 429) {
       const retryAfter = Number(res.headers.get("Retry-After")) || data.retryAfter || 45;
       blockedUntil = Date.now() + retryAfter * 1000;
-      throw new AiError(data.error ?? `The free AI is busy. Try again in ${retryAfter}s.`, retryAfter);
+      throw new AiError("busy", retryAfter);
     }
-    throw new AiError(data.error ?? `The free AI service had a problem (HTTP ${res.status}). Please try again shortly.`);
+    const code: AiErrorCode = res.status === 401 ? "signIn" : res.status === 503 ? "off" : res.status === 413 ? "tooLong" : res.status === 504 ? "noResponse" : "http";
+    throw new AiError(code, undefined, res.status);
   }
   return res;
 }
@@ -68,7 +77,7 @@ function extractJson(text: string): unknown {
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
     if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
-    throw new AiError("The AI gave an unexpected answer. Please try again.");
+    throw new AiError("unexpected");
   }
 }
 
@@ -76,7 +85,7 @@ export async function completeJson<S extends z.ZodType>(schema: S, messages: Cha
   const res = await post({ messages, json: true }, timeoutMs);
   const data = await res.json();
   const parsed = schema.safeParse(extractJson(data?.choices?.[0]?.message?.content ?? ""));
-  if (!parsed.success) throw new AiError("The AI gave an unexpected answer. Please try again.");
+  if (!parsed.success) throw new AiError("unexpected");
   return parsed.data;
 }
 
@@ -125,10 +134,10 @@ const SearchPlan = z.object({
   yearTo: nullableInt,
   availableOnly: z.preprocess((v) => v === true || v === "true", z.boolean()),
   sort: z.enum(SORT_VALUES).catch("relevance"),
-  explanation: z.string().catch("Here's what I found."),
+  explanation: z.string().catch(""),
 });
 
-export async function interpretSearch(query: string, genres: string[]) {
+export async function interpretSearch(query: string, genres: string[], language: AiLanguage = "en") {
   const plan = await completeJson(SearchPlan, [
     {
       role: "system",
@@ -142,7 +151,8 @@ Rules:
 - "keywords": a few distinctive words (themes, topics, author or title fragments), never filler like "books" or "good". Null if genre/years already cover it.
 - "availableOnly": true only if they want something they can borrow now/today.
 - sort: "popular" for popular/trending, "rating" for best/highly rated, "newest" for recently added, "year" for recent releases, else "relevance".
-- "explanation": one friendly sentence under 20 words.`,
+- "explanation": one friendly sentence under 20 words, written in ${LANGUAGE_NAMES[language]}.
+- The request may be in any language; genre names must still be copied exactly from the list.`,
     },
     { role: "user", content: query.trim().slice(0, 300) },
   ]);
@@ -195,7 +205,7 @@ const Picks = z.object({ picks: z.array(z.object({ id: z.union([z.string(), z.nu
 export type PickCandidate = { id: string; title: string; author: string; genre: string | null; tags: string[]; available: number };
 export type HistoryItem = { title: string; author: string; genre: string | null; rating?: number | null };
 
-export async function recommendBooks(history: HistoryItem[], candidates: PickCandidate[]) {
+export async function recommendBooks(history: HistoryItem[], candidates: PickCandidate[], language: AiLanguage = "en") {
   // Short numbers instead of UUIDs: a smaller prompt, and easy for a small model to copy.
   const res = await completeJson(Picks, [
     {
@@ -203,7 +213,8 @@ export async function recommendBooks(history: HistoryItem[], candidates: PickCan
       content: `You are a warm, well-read librarian recommending books from THIS library only. Reply with JSON only:
 {"picks": [{"id": number, "reason": string}]}
 Pick exactly 4 candidates by their number. Prefer available books, mix familiar and adventurous picks, and never pick
-something the reader has already read. Each reason is one short sentence addressed to the reader ("you") that refers to what they've read.`,
+something the reader has already read. Each reason is one short sentence addressed to the reader ("you") that refers to what they've read,
+written in ${LANGUAGE_NAMES[language]}.`,
     },
     {
       role: "user",
@@ -225,6 +236,6 @@ something the reader has already read. Each reason is one short sentence address
       out.push({ id: book.id, reason: p.reason.replace(/[*_`]/g, "").trim() });
     }
   }
-  if (!out.length) throw new AiError("The AI couldn't pick books this time. Please try again.");
+  if (!out.length) throw new AiError("noPicks");
   return out.slice(0, 4);
 }

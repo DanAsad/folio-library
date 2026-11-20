@@ -5,10 +5,13 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { setUserRole } from "@/lib/actions/misc";
 import type { Role } from "@/lib/db/schema";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { useI18n } from "@/i18n/client";
+
+const ROLES: Role[] = ["admin", "librarian", "member"];
 
 export function RoleSelect({ userId, role }: { userId: string; role: Role }) {
   const [pending, start] = useTransition();
+  const { t } = useI18n();
   return (
     <Select
       defaultValue={role}
@@ -21,13 +24,13 @@ export function RoleSelect({ userId, role }: { userId: string; role: Role }) {
         })
       }
     >
-      <SelectTrigger className="h-8 w-32" aria-label="Role">
+      <SelectTrigger className="h-8 w-32" aria-label={t("members.role")}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
+        {ROLES.map((r) => (
           <SelectItem key={r} value={r}>
-            {ROLE_LABEL[r]}
+            {t(`roles.${r}`)}
           </SelectItem>
         ))}
       </SelectContent>

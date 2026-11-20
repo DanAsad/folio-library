@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import { format } from "date-fns";
 import { ShieldCheck } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,14 +8,17 @@ import { PageHeader } from "@/components/books/bits";
 import { initials } from "@/lib/format";
 import { getDb } from "@/lib/db/client";
 import { fines, memberships, users } from "@/lib/db/schema";
-import { formatMoney } from "@/lib/money";
-import { can, PERMISSIONS, ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";
+import { can, PERMISSIONS } from "@/lib/permissions";
 import { requirePermissionPage } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { AddPersonDialog, ChargeFineDialog, FineButtons } from "./member-tools";
 import { RoleSelect } from "./role-select";
+import { getI18n } from "@/i18n/server";
 
-export const metadata = { title: "Members & fines" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("nav.members") };
+}
 
 export default async function MembersPage() {
   const me = await requirePermissionPage("loans:manage");
@@ -24,6 +26,8 @@ export default async function MembersPage() {
   const isAdmin = can(me.role, "users:manage");
   const canFine = can(me.role, "fines:manage");
   const db = await getDb();
+  const { t, money, date } = await getI18n();
+  const m = (cents: number) => money(cents, lib.currency);
 
   // Fully qualified on purpose (see the note in lib/library.ts), and scoped to this library.
   const activeSql = sql<number>`(select count(*)::int from loans l where l.user_id = "users"."id" and l.library_id = ${lib.id} and l.returned_at is null)`;
@@ -61,8 +65,8 @@ export default async function MembersPage() {
   return (
     <>
       <PageHeader
-        title="Members & fines"
-        description={`Everyone with access to ${lib.name}. ${isAdmin ? "Roles apply to this library only and change immediately." : "Only admins can change roles."}`}
+        title={t("nav.members")}
+        description={`${t("members.description", { library: lib.name })} ${isAdmin ? t("members.rolesNote") : t("members.adminsOnly")}`}
         actions={
           <div className="flex flex-wrap gap-2">
             {canFine && <ChargeFineDialog currency={lib.currency} members={rows.map((r) => ({ id: r.id, name: r.name ?? r.email }))} />}
@@ -75,10 +79,10 @@ export default async function MembersPage() {
         {(["admin", "librarian", "member"] as const).map((r) => (
           <div key={r} className="rounded-xl border bg-card p-4">
             <p className="flex items-center gap-2 font-medium">
-              <ShieldCheck className="size-4 text-primary" /> {ROLE_LABEL[r]}
+              <ShieldCheck className="size-4 text-primary" /> {t(`roles.${r}`)}
               <span className="ml-auto text-xs font-normal text-muted-foreground">{rows.filter((x) => x.role === r).length}</span>
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{ROLE_DESCRIPTION[r]}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t(`roleDescriptions.${r}`)}</p>
             <p className="mt-2 flex flex-wrap gap-1">
               {Object.entries(PERMISSIONS)
                 .filter(([, roles]) => (roles as readonly string[]).includes(r))
@@ -87,7 +91,7 @@ export default async function MembersPage() {
                     {p}
                   </code>
                 ))}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[0.65rem]">borrow & review</code>
+              <code className="rounded bg-muted px-1.5 py-0.5 text-[0.65rem]">{t("members.borrowReview")}</code>
             </p>
           </div>
         ))}
@@ -97,12 +101,12 @@ export default async function MembersPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead>Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead className="text-right">On loan</TableHead>
-              <TableHead className="text-right">Owes</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">All-time loans</TableHead>
-              <TableHead className="hidden md:table-cell">Joined</TableHead>
+              <TableHead>{t("members.name")}</TableHead>
+              <TableHead>{t("members.role")}</TableHead>
+              <TableHead className="text-right">{t("books.onLoan")}</TableHead>
+              <TableHead className="text-right">{t("members.owes")}</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">{t("members.allTime")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("members.joined")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -117,19 +121,19 @@ export default async function MembersPage() {
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 truncate font-medium">
                         {u.name ?? "—"}
-                        {u.id === me.id && <Badge variant="secondary">You</Badge>}
-                        {u.isDemo && <Badge variant="outline">Demo</Badge>}
+                        {u.id === me.id && <Badge variant="secondary">{t("bookPage.you")}</Badge>}
+                        {u.isDemo && <Badge variant="outline">{t("members.demo")}</Badge>}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                     </div>
                   </div>
                 </TableCell>
                 <TableCell>
-                  {isAdmin && u.id !== me.id ? <RoleSelect userId={u.id} role={u.role} /> : <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>}
+                  {isAdmin && u.id !== me.id ? <RoleSelect userId={u.id} role={u.role} /> : <Badge variant="secondary">{t(`roles.${u.role}`)}</Badge>}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {u.active}
-                  {u.overdue > 0 && <span className="ml-2 text-xs font-medium text-destructive">{u.overdue} overdue</span>}
+                  {u.overdue > 0 && <span className="ml-2 text-xs font-medium text-destructive">{t("dashboard.overdueCount", { count: u.overdue })}</span>}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -137,10 +141,10 @@ export default async function MembersPage() {
                     u.owed > 0 ? (lib.blockAtCents > 0 && u.owed >= lib.blockAtCents ? "font-medium text-destructive" : "font-medium") : "text-muted-foreground",
                   )}
                 >
-                  {u.owed > 0 ? formatMoney(u.owed, lib.currency) : "—"}
+                  {u.owed > 0 ? m(u.owed) : "—"}
                 </TableCell>
                 <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">{u.total}</TableCell>
-                <TableCell className="hidden text-muted-foreground md:table-cell">{format(u.joinedAt, "MMM d, yyyy")}</TableCell>
+                <TableCell className="hidden text-muted-foreground md:table-cell">{date(u.joinedAt, "medium")}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -150,18 +154,24 @@ export default async function MembersPage() {
       <section className="mt-10 space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-xl font-semibold">Unpaid fines</h2>
+            <h2 className="text-xl font-semibold">{t("members.unpaid")}</h2>
             <p className="text-sm text-muted-foreground">
-              {formatMoney(totalOwed, lib.currency)} outstanding.{" "}
+              {t("members.outstanding", { amount: m(totalOwed) })}{" "}
               {lib.finePerDayCents
-                ? `Late fees are ${formatMoney(lib.finePerDayCents, lib.currency)} a day${lib.fineGraceDays ? ` after ${lib.fineGraceDays} grace days` : ""}${lib.maxFineCents ? `, capped at ${formatMoney(lib.maxFineCents, lib.currency)} per loan` : ""}.`
-                : "This library doesn't charge late fees."}
-              {lib.blockAtCents ? ` Members owing ${formatMoney(lib.blockAtCents, lib.currency)} or more can't borrow.` : ""}
+                ? [
+                    t("members.lateFees", { amount: m(lib.finePerDayCents) }),
+                    lib.fineGraceDays ? t("members.graceDays", { count: lib.fineGraceDays }) : "",
+                    lib.maxFineCents ? t("members.cap", { amount: m(lib.maxFineCents) }) : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                : t("members.noLateFees")}
+              {lib.blockAtCents ? ` ${t("members.blockAt", { amount: m(lib.blockAtCents) })}` : ""}
               {can(me.role, "settings:manage") && (
                 <>
                   {" "}
                   <Link href="/settings" className="text-primary hover:underline">
-                    Change the rules
+                    {t("members.changeRules")}
                   </Link>
                 </>
               )}
@@ -169,17 +179,17 @@ export default async function MembersPage() {
           </div>
         </div>
         {openFines.length === 0 ? (
-          <p className="rounded-xl border bg-card px-4 py-6 text-center text-sm text-muted-foreground">Nobody owes anything right now.</p>
+          <p className="rounded-xl border bg-card px-4 py-6 text-center text-sm text-muted-foreground">{t("members.nobodyOwes")}</p>
         ) : (
           <div className="overflow-hidden rounded-xl border bg-card">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40">
-                  <TableHead>Member</TableHead>
-                  <TableHead>For</TableHead>
-                  <TableHead className="hidden md:table-cell">Charged</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  {canFine && <TableHead className="text-right">Settle</TableHead>}
+                  <TableHead>{t("loansPage.member")}</TableHead>
+                  <TableHead>{t("members.for")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("members.charged")}</TableHead>
+                  <TableHead className="text-right">{t("fields.amount")}</TableHead>
+                  {canFine && <TableHead className="text-right">{t("members.settle")}</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -187,7 +197,7 @@ export default async function MembersPage() {
                   <TableRow key={f.id}>
                     <TableCell className="font-medium">{f.user.name ?? f.user.email}</TableCell>
                     <TableCell className="text-sm">
-                      <span className="capitalize">{f.reason === "overdue" ? "Late return" : f.reason === "lost" ? "Lost item" : "Damage"}</span>
+                      <span>{t(`fineReasons.${f.reason}`)}</span>
                       {f.loan?.book && (
                         <>
                           {" · "}
@@ -198,8 +208,8 @@ export default async function MembersPage() {
                       )}
                       {f.note && <p className="text-xs text-muted-foreground">{f.note}</p>}
                     </TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{format(f.createdAt, "MMM d")}</TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{formatMoney(f.amountCents, lib.currency)}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{date(f.createdAt)}</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{m(f.amountCents)}</TableCell>
                     {canFine && (
                       <TableCell>
                         <FineButtons fineId={f.id} />

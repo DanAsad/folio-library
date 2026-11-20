@@ -1,24 +1,29 @@
-import { Building2, DatabaseZap, Mail } from "lucide-react";
+import { Building2, CreditCard, DatabaseZap, Mail } from "lucide-react";
 import { DEMO_MODE } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/books/bits";
 import { emailConfigured } from "@/lib/email";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { paymentsEnabled } from "@/lib/stripe";
+import { getI18n } from "@/i18n/server";
 import { requirePermissionPage } from "@/lib/session";
 import { NewLibraryForm, ResetDemoButton, SettingsForm } from "./settings-forms";
 
-export const metadata = { title: "Library settings" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("nav.settings") };
+}
 
 const money = (cents: number) => (cents / 100).toFixed(2);
 
 export default async function SettingsPage() {
   const user = await requirePermissionPage("settings:manage");
   const l = user.library;
+  const { t, rich } = await getI18n();
 
   return (
     <div className="space-y-10">
-      <PageHeader title="Library settings" description={`Rules for ${l.name}. Every library sets its own.`} />
+      <PageHeader title={t("nav.settings")} description={t("settings.description", { library: l.name })} />
 
       <SettingsForm
         key={l.id}
@@ -41,11 +46,9 @@ export default async function SettingsPage() {
       <Card id="new-library" className="scroll-mt-20">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Building2 className="size-5 text-primary" /> Libraries
+            <Building2 className="size-5 text-primary" /> {t("settings.libraries")}
           </CardTitle>
-          <CardDescription>
-            Each library has its own catalogue, copies, members, roles, rules and reports. People can belong to several with a different role in each.
-          </CardDescription>
+          <CardDescription>{t("settings.librariesBody")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <ul className="divide-y rounded-lg border">
@@ -56,16 +59,16 @@ export default async function SettingsPage() {
                   {lib.tagline && <span className="block truncate text-xs text-muted-foreground">{lib.tagline}</span>}
                 </span>
                 <span className="flex items-center gap-2">
-                  {lib.id === l.id && <Badge>Current</Badge>}
-                  <Badge variant="secondary">{ROLE_LABEL[lib.role]}</Badge>
+                  {lib.id === l.id && <Badge>{t("settings.current")}</Badge>}
+                  <Badge variant="secondary">{t(`roles.${lib.role}`)}</Badge>
                 </span>
               </li>
             ))}
           </ul>
           <div className="space-y-2">
-            <p className="text-sm font-medium">Open a new library</p>
+            <p className="text-sm font-medium">{t("settings.openNew")}</p>
             <NewLibraryForm />
-            <p className="text-xs text-muted-foreground">You&apos;ll be its admin. It starts with an empty catalogue and the default rules.</p>
+            <p className="text-xs text-muted-foreground">{t("settings.openNewHint")}</p>
           </div>
         </CardContent>
       </Card>
@@ -74,22 +77,40 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Mail className="size-5 text-primary" /> Reminders
+              <Mail className="size-5 text-primary" /> {t("settings.reminders")}
             </CardTitle>
-            <CardDescription>
-              A daily job sends &ldquo;due soon&rdquo; reminders 2 days before the due date and overdue reminders on the first day and then weekly. Members also hear
-              when a reserved copy is ready and when a fine is charged.
-            </CardDescription>
+            <CardDescription>{t("settings.remindersBody")}</CardDescription>
           </CardHeader>
           <CardContent className="text-sm">
             {emailConfigured() ? (
               <p>
-                <Badge className="bg-success/15 text-success">Email on</Badge> Reminders are also emailed. Demo accounts never receive email.
+                <Badge className="bg-success/15 text-success">{t("settings.emailOn")}</Badge> {t("settings.emailOnBody")}
               </p>
             ) : (
               <p className="text-muted-foreground">
-                <Badge variant="outline">In-app only</Badge> Set <code className="font-mono">RESEND_API_KEY</code> and <code className="font-mono">EMAIL_FROM</code> to email
-                them too.
+                <Badge variant="outline">{t("settings.inAppOnly")}</Badge>{" "}
+                {rich("settings.emailOffBody", { key: <code className="font-mono">RESEND_API_KEY</code>, from: <code className="font-mono">EMAIL_FROM</code> })}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="size-5 text-primary" /> {t("settings.payments")}
+            </CardTitle>
+            <CardDescription>{t("settings.paymentsBody")}</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {paymentsEnabled() ? (
+              <p>
+                <Badge className="bg-success/15 text-success">{t("settings.stripeTest")}</Badge> {t("settings.stripeTestBody")}
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                <Badge variant="outline">{t("settings.deskOnly")}</Badge>{" "}
+                {rich("settings.stripeOffBody", { key: <code className="font-mono">STRIPE_SECRET_KEY</code> })}
               </p>
             )}
           </CardContent>
@@ -99,11 +120,9 @@ export default async function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <DatabaseZap className="size-5 text-primary" /> Demo data
+                <DatabaseZap className="size-5 text-primary" /> {t("settings.demoData")}
               </CardTitle>
-              <CardDescription>
-                This is a shared demo, so the sample data is restored every night at 04:00 UTC. You can also restore it right away.
-              </CardDescription>
+              <CardDescription>{t("settings.demoDataBody")}</CardDescription>
             </CardHeader>
             <CardContent>
               <ResetDemoButton />

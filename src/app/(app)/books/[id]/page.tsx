@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format, formatDistanceToNowStrict } from "date-fns";
+import { differenceInCalendarDays } from "date-fns";
 import { ArrowLeft, CalendarClock, Hash, Languages, MapPin, Pencil, BookText, Building2, Users } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
@@ -13,18 +13,19 @@ import { BookGrid } from "@/components/books/book-views";
 import { getDb } from "@/lib/db/client";
 import { memberships, users } from "@/lib/db/schema";
 import { getBook, getSimilarBooks } from "@/lib/library";
-import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { getCurrentUser, requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { BookActions, CheckInButton, DeleteBookButton, MarkLostButton } from "./book-actions";
 import { CopiesPanel } from "./copies-panel";
 import { ReviewForm } from "./review-form";
+import { getI18n } from "@/i18n/server";
+import type { MessageKey } from "@/i18n";
 
 export async function generateMetadata({ params }: PageProps<"/books/[id]">) {
   const user = await getCurrentUser();
   const data = user ? await getBook(user.library.id, (await params).id) : null;
-  return { title: data?.book.title ?? "Book" };
+  return { title: data?.book.title ?? (await getI18n()).t("bookPage.book") };
 }
 
 export default async function BookPage({ params }: PageProps<"/books/[id]">) {
@@ -32,6 +33,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
   const user = await requireUser();
   const data = await getBook(user.library.id, id);
   if (!data) notFound();
+  const { t, date, relative, money } = await getI18n();
   const { book, activeLoans, queue, reviews, history, copies } = data;
   const lib = user.library;
   const staff = can(user.role, "loans:manage");
@@ -58,28 +60,29 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
   ]);
 
   const nextDue = activeLoans[0]?.dueAt;
-  const meta = [
-    { icon: Hash, label: "ISBN", value: book.isbn },
-    { icon: CalendarClock, label: "Published", value: book.publishedYear },
-    { icon: Building2, label: "Publisher", value: book.publisher },
-    { icon: BookText, label: "Pages", value: book.pages },
-    { icon: Languages, label: "Language", value: book.language },
-    { icon: MapPin, label: "Shelf", value: book.location },
-  ].filter((m) => m.value);
+  const meta: { icon: typeof Hash; label: MessageKey; value: string | number | null }[] = [
+    { icon: Hash, label: "bookFields.isbn", value: book.isbn },
+    { icon: CalendarClock, label: "bookFields.published", value: book.publishedYear },
+    { icon: Building2, label: "bookFields.publisher", value: book.publisher },
+    { icon: BookText, label: "bookFields.pages", value: book.pages },
+    { icon: Languages, label: "bookFields.language", value: book.language },
+    { icon: MapPin, label: "bookFields.shelf", value: book.location },
+  ];
+  const shownMeta = meta.filter((m) => m.value);
 
   return (
     <div className="space-y-10">
       <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/books">
-            <ArrowLeft /> Catalogue
+            <ArrowLeft /> {t("nav.catalogue")}
           </Link>
         </Button>
         {canEdit && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link href={`/books/${book.id}/edit`}>
-                <Pencil /> Edit
+                <Pencil /> {t("common.edit")}
               </Link>
             </Button>
             <DeleteBookButton bookId={book.id} title={book.title} disabled={activeLoans.length > 0} />
@@ -95,11 +98,11 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             <CardContent className="space-y-4 px-4">
               <div className="flex items-center justify-between">
                 <AvailabilityBadge book={book} long />
-                <span className="text-xs text-muted-foreground">{book.totalCopies} {book.totalCopies === 1 ? "copy" : "copies"}</span>
+                <span className="text-xs text-muted-foreground">{t("dashboard.copiesCount", { count: book.totalCopies })}</span>
               </div>
               {book.available === 0 && nextDue && !myLoan && (
                 <p className="text-xs text-muted-foreground">
-                  Next copy due back {formatDistanceToNowStrict(nextDue, { addSuffix: true })} ({format(nextDue, "MMM d")}).
+                  {t("bookPage.nextDue", { when: relative(nextDue), date: nextDue })}
                 </p>
               )}
               <BookActions
@@ -127,7 +130,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             )}
             <h1 className="text-4xl leading-tight font-semibold text-balance">{book.title}</h1>
             <p className="text-lg text-muted-foreground">
-              by{" "}
+              {t("bookPage.by")}{" "}
               <Link href={`/books?q=${encodeURIComponent(book.author)}&field=author`} className="text-foreground hover:text-primary hover:underline">
                 {book.author}
               </Link>
@@ -135,7 +138,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <Stars value={book.avgRating} count={book.reviewCount} size="md" />
               <span className="flex items-center gap-1.5">
-                <Users className="size-4" /> Borrowed {book.loanCount} {book.loanCount === 1 ? "time" : "times"}
+                <Users className="size-4" /> {t("bookPage.borrowedTimes", { count: book.loanCount })}
               </span>
             </div>
           </div>
@@ -144,45 +147,45 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
 
           {book.tags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {book.tags.map((t) => (
-                <Badge key={t} variant="secondary" asChild>
-                  <Link href={`/books?q=${encodeURIComponent(t)}&field=tags`}>#{t}</Link>
+              {book.tags.map((tag) => (
+                <Badge key={tag} variant="secondary" asChild>
+                  <Link href={`/books?q=${encodeURIComponent(tag)}&field=tags`}>#{tag}</Link>
                 </Badge>
               ))}
             </div>
           )}
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
-            {meta.map(({ icon: Icon, label, value }) => (
+            {shownMeta.map(({ icon: Icon, label, value }) => (
               <div key={label} className="space-y-1">
                 <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Icon className="size-3.5" /> {label}
+                  <Icon className="size-3.5" /> {t(label)}
                 </dt>
-                <dd className={cn("text-sm font-medium", label === "ISBN" && "font-mono")}>{value}</dd>
+                <dd className={cn("text-sm font-medium", label === "bookFields.isbn" && "font-mono")}>{value}</dd>
               </div>
             ))}
           </dl>
 
           <Tabs defaultValue="reviews">
             <TabsList>
-              <TabsTrigger value="reviews">Reviews ({reviews.length})</TabsTrigger>
-              <TabsTrigger value="waitlist">Waitlist ({queue.length})</TabsTrigger>
-              {staff && <TabsTrigger value="copies">Copies ({copies.filter((c) => c.status === "active").length})</TabsTrigger>}
-              {staff && <TabsTrigger value="loans">On loan ({activeLoans.length})</TabsTrigger>}
-              {staff && <TabsTrigger value="history">History</TabsTrigger>}
+              <TabsTrigger value="reviews">{t("bookPage.reviewsTab", { count: reviews.length })}</TabsTrigger>
+              <TabsTrigger value="waitlist">{t("bookPage.waitlistTab", { count: queue.length })}</TabsTrigger>
+              {staff && <TabsTrigger value="copies">{t("bookPage.copiesTab", { count: copies.filter((c) => c.status === "active").length })}</TabsTrigger>}
+              {staff && <TabsTrigger value="loans">{t("bookPage.onLoanTab", { count: activeLoans.length })}</TabsTrigger>}
+              {staff && <TabsTrigger value="history">{t("bookPage.historyTab")}</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="reviews" className="space-y-5 pt-4">
               <ReviewForm bookId={book.id} existing={myReview ? { rating: myReview.rating, body: myReview.body ?? "" } : null} />
               {reviews.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No reviews yet. Be the first to share what you thought.</p>
+                <p className="text-sm text-muted-foreground">{t("bookPage.noReviews")}</p>
               ) : (
                 <ul className="divide-y rounded-xl border bg-card">
                   {reviews.map((r) => (
                     <li key={r.id} className="space-y-1.5 p-4">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium">{r.user.name}</span>
-                        <span className="text-xs text-muted-foreground">{format(r.createdAt, "MMM d, yyyy")}</span>
+                        <span className="text-xs text-muted-foreground">{date(r.createdAt, "medium")}</span>
                       </div>
                       <Stars value={r.rating} />
                       {r.body && <p className="text-sm text-muted-foreground">{r.body}</p>}
@@ -194,20 +197,20 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
 
             <TabsContent value="waitlist" className="pt-4">
               {queue.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nobody is waiting for this book.</p>
+                <p className="text-sm text-muted-foreground">{t("bookPage.nobodyWaiting")}</p>
               ) : (
                 <ol className="divide-y rounded-xl border bg-card">
                   {queue.map((h, i) => (
                     <li key={h.id} className="flex items-center justify-between gap-3 p-4 text-sm">
                       <span className="flex items-center gap-3">
                         <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums">{i + 1}</span>
-                        {staff || h.userId === user.id ? h.user.name ?? h.user.email : "A member"}
-                        {h.userId === user.id && <Badge variant="secondary">You</Badge>}
+                        {staff || h.userId === user.id ? h.user.name ?? h.user.email : t("bookPage.aMember")}
+                        {h.userId === user.id && <Badge variant="secondary">{t("bookPage.you")}</Badge>}
                       </span>
                       {h.status === "ready" ? (
-                        <Badge className="bg-success/15 text-success">Ready until {h.expiresAt ? format(h.expiresAt, "MMM d") : "soon"}</Badge>
+                        <Badge className="bg-success/15 text-success">{h.expiresAt ? t("bookPage.readyUntil", { date: h.expiresAt }) : t("bookPage.readySoon")}</Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">joined {formatDistanceToNowStrict(h.createdAt, { addSuffix: true })}</span>
+                        <span className="text-xs text-muted-foreground">{t("bookPage.joined", { when: relative(h.createdAt) })}</span>
                       )}
                     </li>
                   ))}
@@ -236,7 +239,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
             {staff && (
               <TabsContent value="loans" className="pt-4">
                 {activeLoans.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">All copies are on the shelf.</p>
+                  <p className="text-sm text-muted-foreground">{t("bookPage.allOnShelf")}</p>
                 ) : (
                   <ul className="divide-y rounded-xl border bg-card">
                     {activeLoans.map((l) => {
@@ -248,12 +251,14 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
                               {l.user.name ?? l.user.email} <span className="font-mono text-xs font-normal text-muted-foreground">{l.copy.barcode}</span>
                             </p>
                             <p className={cn("text-xs", overdue ? "font-medium text-destructive" : "text-muted-foreground")}>
-                              {overdue ? `Overdue by ${formatDistanceToNowStrict(l.dueAt)}` : `Due ${format(l.dueAt, "MMM d")}`} · borrowed{" "}
-                              {format(l.borrowedAt, "MMM d")}
+                              {overdue
+                                ? t("loans.overdueByDays", { count: Math.max(1, -differenceInCalendarDays(l.dueAt, new Date())) })
+                                : t("loans.dueOn", { date: l.dueAt })}{" "}
+                              · {t("bookPage.borrowedOn", { date: l.borrowedAt })}
                             </p>
                           </div>
                           <div className="flex gap-1">
-                            <MarkLostButton loanId={l.id} barcode={l.copy.barcode} fee={formatMoney(lib.lostItemFeeCents, lib.currency)} />
+                            <MarkLostButton loanId={l.id} barcode={l.copy.barcode} fee={money(lib.lostItemFeeCents, lib.currency)} />
                             <CheckInButton loanId={l.id} />
                           </div>
                         </li>
@@ -273,7 +278,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
                         {l.user.name} <span className="font-mono text-xs text-muted-foreground">{l.copy.barcode}</span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {format(l.borrowedAt, "MMM d")} → {l.returnedAt ? format(l.returnedAt, "MMM d") : "now"}
+                        {date(l.borrowedAt)} → {l.returnedAt ? date(l.returnedAt) : t("catalogue.now")}
                       </span>
                     </li>
                   ))}
@@ -286,7 +291,7 @@ export default async function BookPage({ params }: PageProps<"/books/[id]">) {
 
       {similar.length > 0 && (
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold">More like this</h2>
+          <h2 className="text-2xl font-semibold">{t("bookPage.moreLikeThis")}</h2>
           <BookGrid books={similar.slice(0, 5)} />
         </section>
       )}

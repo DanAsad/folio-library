@@ -6,14 +6,15 @@ import { z } from "zod";
 import { getDb } from "@/lib/db/client";
 import { activity, books, memberships, reviews, roleEnum, users } from "@/lib/db/schema";
 import { LibraryError } from "@/lib/library";
-import { ROLE_LABEL } from "@/lib/permissions";
 import { authorize } from "@/lib/session";
 import { personInput } from "@/lib/validation";
+import { getI18n } from "@/i18n/server";
+import { activityText, keyParam } from "@/i18n/stored";
 import { run } from "./result";
 
 const reviewInput = z.object({
   bookId: z.string().uuid(),
-  rating: z.number().int().min(1, "Pick a rating from 1 to 5 stars.").max(5),
+  rating: z.number().int().min(1, "validation.rating").max(5),
   body: z.string().trim().max(2000).optional(),
 });
 
@@ -23,7 +24,7 @@ export async function saveReview(input: z.input<typeof reviewInput>) {
     const data = reviewInput.parse(input);
     const db = await getDb();
     const book = await db.query.books.findFirst({ where: and(eq(books.id, data.bookId), eq(books.libraryId, user.library.id)) });
-    if (!book) throw new LibraryError("Book not found.");
+    if (!book) throw new LibraryError("errors.bookNotFound");
     await db
       .insert(reviews)
       .values({ ...data, userId: user.id, body: data.body || null })
@@ -32,7 +33,8 @@ export async function saveReview(input: z.input<typeof reviewInput>) {
         set: { rating: data.rating, body: data.body || null, createdAt: new Date() },
       });
     revalidatePath(`/books/${data.bookId}`);
-    return { message: "Thanks for your review!" };
+    const { t } = await getI18n();
+    return { message: t("actions.reviewSaved") };
   });
 }
 
@@ -41,11 +43,12 @@ export async function deleteReview(reviewId: string) {
     const user = await authorize();
     const db = await getDb();
     const review = await db.query.reviews.findFirst({ where: eq(reviews.id, reviewId), with: { book: true } });
-    if (!review || review.book.libraryId !== user.library.id) throw new LibraryError("Review not found.");
-    if (review.userId !== user.id && user.role === "member") throw new LibraryError("You can only delete your own review.");
+    if (!review || review.book.libraryId !== user.library.id) throw new LibraryError("errors.reviewNotFound");
+    if (review.userId !== user.id && user.role === "member") throw new LibraryError("errors.reviewOwn");
     await db.delete(reviews).where(eq(reviews.id, reviewId));
     revalidatePath(`/books/${review.bookId}`);
-    return { message: "Review removed" };
+    const { t } = await getI18n();
+    return { message: t("actions.reviewRemoved") };
   });
 }
 
@@ -54,14 +57,14 @@ export async function setUserRole(userId: string, role: string) {
   return run(async () => {
     const admin = await authorize("users:manage");
     const parsed = z.enum(roleEnum.enumValues).parse(role);
-    if (userId === admin.id) throw new LibraryError("You can't change your own role.");
+    if (userId === admin.id) throw new LibraryError("errors.ownRole");
     const db = await getDb();
     const [updated] = await db
       .update(memberships)
       .set({ role: parsed })
       .where(and(eq(memberships.libraryId, admin.library.id), eq(memberships.userId, userId)))
       .returning();
-    if (!updated) throw new LibraryError("That person isn't a member of this library.");
+    if (!updated) throw new LibraryError("errors.notMember");
     const person = await db.query.users.findFirst({ where: eq(users.id, userId) });
     const who = person?.name ?? person?.email ?? "Member";
     await db.insert(activity).values({
@@ -69,10 +72,11 @@ export async function setUserRole(userId: string, role: string) {
       actorId: admin.id,
       action: "user.role",
       subjectUserId: userId,
-      message: `${admin.name} made ${who} a ${ROLE_LABEL[parsed]}`,
+      ...activityText("activity.userRole", { member: admin.name, person: who, role: keyParam(`roles.${parsed}`) }),
     });
     revalidatePath("/members");
-    return { message: `${who} is now a ${ROLE_LABEL[parsed]} at ${admin.library.name}.` };
+    const { t } = await getI18n();
+    return { message: t("actions.roleChanged", { person: who, role: t(`roles.${parsed}`), library: admin.library.name }) };
   });
 }
 
@@ -91,16 +95,17 @@ export async function addPerson(input: z.input<typeof personInput>) {
       .select()
       .from(memberships)
       .where(and(eq(memberships.libraryId, admin.library.id), eq(memberships.userId, person.id)));
-    if (existing) throw new LibraryError(`${person.name ?? person.email} is already a ${ROLE_LABEL[existing.role]} here.`);
+    if (existing) throw new LibraryError(`errors.alreadyRole.${existing.role}`, { person: person.name ?? person.email });
     await db.insert(memberships).values({ libraryId: admin.library.id, userId: person.id, role: data.role });
     await db.insert(activity).values({
       libraryId: admin.library.id,
       actorId: admin.id,
       action: "user.join",
       subjectUserId: person.id,
-      message: `${admin.name} added ${person.name ?? person.email} as a ${ROLE_LABEL[data.role]}`,
+      ...activityText("activity.userJoin", { member: admin.name, person: person.name ?? person.email, role: keyParam(`roles.${data.role}`) }),
     });
     revalidatePath("/members");
-    return { message: `${person.name ?? person.email} added as a ${ROLE_LABEL[data.role]}.` };
+    const { t } = await getI18n();
+    return { message: t("actions.personAdded", { person: person.name ?? person.email, role: t(`roles.${data.role}`) }) };
   });
 }

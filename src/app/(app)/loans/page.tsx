@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
-import { differenceInCalendarDays, format, formatDistanceToNowStrict } from "date-fns";
-import { BookMarked, Clock, History, Receipt } from "lucide-react";
+import { differenceInCalendarDays } from "date-fns";
+import { BookMarked, CircleCheck, CircleX, Clock, History, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -10,21 +10,27 @@ import { BookCover } from "@/components/book-cover";
 import { EmptyState, PageHeader } from "@/components/books/bits";
 import { getDb } from "@/lib/db/client";
 import { fines, holds, loans } from "@/lib/db/schema";
-import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { BorrowReservedButton, CancelHoldButton, CheckInButton, MarkLostButton, RenewButton } from "../books/[id]/book-actions";
 import { DeskCheckIn } from "./desk-check-in";
+import { PayFinesButton } from "./pay-fines";
+import { paymentsEnabled } from "@/lib/stripe";
+import { getI18n } from "@/i18n/server";
+import type { Translator } from "@/i18n";
 
-export const metadata = { title: "Loans & holds" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("nav.loans") };
+}
 
-function DueLabel({ dueAt }: { dueAt: Date }) {
+function DueLabel({ dueAt, i18n: { t } }: { dueAt: Date; i18n: Translator }) {
   const days = differenceInCalendarDays(dueAt, new Date());
-  if (days < 0) return <span className="font-medium text-destructive">Overdue by {formatDistanceToNowStrict(dueAt)}</span>;
-  if (days === 0) return <span className="font-medium text-warning">Due today</span>;
-  if (days <= 3) return <span className="font-medium text-[color-mix(in_oklch,var(--warning),black_20%)] dark:text-warning">Due in {days} day{days > 1 ? "s" : ""}</span>;
-  return <span className="text-muted-foreground">Due {format(dueAt, "MMM d")}</span>;
+  if (days < 0) return <span className="font-medium text-destructive">{t("loans.overdueByDays", { count: -days })}</span>;
+  if (days === 0) return <span className="font-medium text-warning">{t("loans.dueToday")}</span>;
+  if (days <= 3) return <span className="font-medium text-[color-mix(in_oklch,var(--warning),black_20%)] dark:text-warning">{t("loans.dueInDays", { count: days })}</span>;
+  return <span className="text-muted-foreground">{t("loans.dueOn", { date: dueAt })}</span>;
 }
 
 /** Share of the loan period that has passed, 0-100. */
@@ -42,6 +48,8 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
   const overdueOnly = sp.filter === "overdue";
   const db = await getDb();
   const lib = user.library;
+  const i18n = await getI18n();
+  const { t, rich, money, date } = i18n;
 
   const [myLoans, myHolds, myHistory, myFines] = await Promise.all([
     db.query.loans.findMany({
@@ -71,8 +79,8 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
   const tabs = staff && (
     <div className="flex rounded-lg border bg-card p-1 text-sm">
       {[
-        ["desk", "Circulation desk"],
-        ["mine", "My loans"],
+        ["desk", t("loansPage.desk")],
+        ["mine", t("shell.myLoans")],
       ].map(([key, label]) => (
         <Link
           key={key}
@@ -102,30 +110,30 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
     return (
       <>
-        <PageHeader title="Loans & holds" description={`Everything that's out, due back, or waiting to be picked up at ${lib.name}.`} actions={tabs} />
+        <PageHeader title={t("nav.loans")} description={t("loansPage.deskDescription", { library: lib.name })} actions={tabs} />
         <DeskCheckIn example={active[0]?.copy.barcode} />
         <div className="mb-4 flex gap-2 text-sm">
           <Link href="/loans" className={cn("rounded-full border px-3 py-1", !overdueOnly && "border-primary bg-accent text-accent-foreground")}>
-            All active
+            {t("loansPage.allActive")}
           </Link>
           <Link href="/loans?filter=overdue" className={cn("rounded-full border px-3 py-1", overdueOnly && "border-destructive bg-destructive/10 text-destructive")}>
-            Overdue{overdueCount ? ` (${overdueCount})` : ""}
+            {t("loans.overdue")}{overdueCount ? ` (${overdueCount})` : ""}
           </Link>
         </div>
         {active.length === 0 ? (
-          <EmptyState icon={<BookMarked className="size-5" />} title={overdueOnly ? "Nothing overdue" : "No active loans"}>
-            {overdueOnly ? "Every borrowed book is on time. 🎉" : "Books you check out to members will show up here."}
+          <EmptyState icon={<BookMarked className="size-5" />} title={overdueOnly ? t("loansPage.nothingOverdue") : t("loansPage.noActive")}>
+            {overdueOnly ? t("loansPage.allOnTime") : t("loansPage.noActiveBody")}
           </EmptyState>
         ) : (
           <div className="overflow-hidden rounded-xl border bg-card">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40">
-                  <TableHead>Book</TableHead>
-                  <TableHead>Member</TableHead>
-                  <TableHead className="hidden md:table-cell">Borrowed</TableHead>
-                  <TableHead>Due</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("loansPage.book")}</TableHead>
+                  <TableHead>{t("loansPage.member")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("loansPage.borrowed")}</TableHead>
+                  <TableHead>{t("loansPage.due")}</TableHead>
+                  <TableHead className="text-right">{t("copies.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -141,14 +149,14 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                       </Link>
                     </TableCell>
                     <TableCell>{l.user.name ?? l.user.email}</TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{format(l.borrowedAt, "MMM d")}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{date(l.borrowedAt)}</TableCell>
                     <TableCell>
-                      <DueLabel dueAt={l.dueAt} />
+                      <DueLabel dueAt={l.dueAt} i18n={i18n} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <RenewButton loanId={l.id} disabled={l.renewals >= lib.maxRenewals} />
-                        {l.dueAt < new Date() && <MarkLostButton loanId={l.id} barcode={l.copy.barcode} fee={formatMoney(lib.lostItemFeeCents, lib.currency)} />}
+                        {l.dueAt < new Date() && <MarkLostButton loanId={l.id} barcode={l.copy.barcode} fee={money(lib.lostItemFeeCents, lib.currency)} />}
                         <CheckInButton loanId={l.id} />
                       </div>
                     </TableCell>
@@ -159,9 +167,9 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
           </div>
         )}
 
-        <h2 className="mt-10 mb-4 text-xl font-semibold">Waitlists</h2>
+        <h2 className="mt-10 mb-4 text-xl font-semibold">{t("loansPage.waitlists")}</h2>
         {queue.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No one is waiting for a book.</p>
+          <p className="text-sm text-muted-foreground">{t("loansPage.noOneWaiting")}</p>
         ) : (
           <div className="overflow-hidden rounded-xl border bg-card">
             <Table>
@@ -176,9 +184,9 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                     <TableCell>{h.user.name ?? h.user.email}</TableCell>
                     <TableCell>
                       {h.status === "ready" ? (
-                        <Badge className="bg-success/15 text-success">Ready for pickup until {h.expiresAt ? format(h.expiresAt, "MMM d") : "soon"}</Badge>
+                        <Badge className="bg-success/15 text-success">{h.expiresAt ? t("loansPage.pickupUntil", { date: h.expiresAt }) : t("bookPage.readySoon")}</Badge>
                       ) : (
-                        <span className="text-sm text-muted-foreground">Waiting since {format(h.createdAt, "MMM d")}</span>
+                        <span className="text-sm text-muted-foreground">{t("loansPage.waitingSince", { date: h.createdAt })}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -196,17 +204,48 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
   // Member view
   const owed = myFines.filter((f) => f.status === "open").reduce((sum, f) => sum + f.amountCents, 0);
+  const canPayOnline = paymentsEnabled() && owed > 0;
+  const paid = typeof sp.paid === "string" ? Number(sp.paid) : null;
+  const payment = sp.payment;
+  const rules = [
+    t("loansPage.rules", { library: lib.name, days: lib.loanDays, count: lib.maxRenewals }),
+    lib.finePerDayCents
+      ? lib.fineGraceDays
+        ? t("loansPage.rulesFineGrace", { amount: { cents: lib.finePerDayCents, currency: lib.currency }, count: lib.fineGraceDays })
+        : t("loansPage.rulesFine", { amount: { cents: lib.finePerDayCents, currency: lib.currency } })
+      : "",
+  ].join(" ");
   return (
     <>
-      <PageHeader title="My loans" description={`At ${lib.name}, loans last ${lib.loanDays} days and can be renewed up to ${lib.maxRenewals} times.${lib.finePerDayCents ? ` Late returns cost ${formatMoney(lib.finePerDayCents, lib.currency)} a day${lib.fineGraceDays ? ` after ${lib.fineGraceDays} grace days` : ""}.` : ""}`} actions={tabs} />
+      <PageHeader title={t("shell.myLoans")} description={rules.trim()} actions={tabs} />
+      {paid !== null && (
+        <p className="mb-6 flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          <CircleCheck className="size-4 text-success" /> {paid > 0 ? t("actions.paid", { count: paid }) : t("payments.alreadyRecorded")}
+        </p>
+      )}
+      {(payment === "cancelled" || payment === "error") && (
+        <p className="mb-6 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <CircleX className="size-4 text-warning" /> {payment === "cancelled" ? t("payments.cancelled") : t("payments.error")}
+        </p>
+      )}
       <section className="space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <BookMarked className="size-5 text-primary" /> Currently borrowed
+          <BookMarked className="size-5 text-primary" /> {t("loansPage.current")}
         </h2>
         {myLoans.length === 0 ? (
-          <EmptyState icon={<BookMarked className="size-5" />} title="Nothing borrowed right now">
-            Browse the <Link href="/books" className="text-primary underline">catalogue</Link> or ask the{" "}
-            <Link href="/assistant" className="text-primary underline">AI librarian</Link> for ideas.
+          <EmptyState icon={<BookMarked className="size-5" />} title={t("loansPage.nothingBorrowed")}>
+            {rich("loansPage.nothingBorrowedBody", {
+              catalogue: (
+                <Link href="/books" className="text-primary underline">
+                  {t("loansPage.catalogueLink")}
+                </Link>
+              ),
+              librarian: (
+                <Link href="/assistant" className="text-primary underline">
+                  {t("loansPage.librarianLink")}
+                </Link>
+              ),
+            })}
           </EmptyState>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
@@ -227,10 +266,10 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                       </div>
                       <Progress value={loanProgress(l.borrowedAt, l.dueAt)} className={cn("h-1.5", overdue && "[&>div]:bg-destructive")} />
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <DueLabel dueAt={l.dueAt} />
+                        <DueLabel dueAt={l.dueAt} i18n={i18n} />
                         <div className="flex gap-1">
                           <RenewButton loanId={l.id} disabled={l.renewals >= lib.maxRenewals} />
-                          <CheckInButton loanId={l.id} label="Return" />
+                          <CheckInButton loanId={l.id} label={t("bookActions.return")} />
                         </div>
                       </div>
                     </div>
@@ -244,10 +283,10 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
       <section className="mt-10 space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <Clock className="size-5 text-primary" /> Waitlist & reservations
+          <Clock className="size-5 text-primary" /> {t("loansPage.holds")}
         </h2>
         {myHolds.length === 0 ? (
-          <p className="text-sm text-muted-foreground">You&apos;re not waiting for any books. When a book is fully checked out, you can join its waitlist.</p>
+          <p className="text-sm text-muted-foreground">{t("loansPage.noHolds")}</p>
         ) : (
           <ul className="divide-y rounded-xl border bg-card">
             {myHolds.map((h) => (
@@ -259,11 +298,11 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                 <div className="flex items-center gap-2">
                   {h.status === "ready" ? (
                     <>
-                      <Badge className="bg-success/15 text-success">Reserved for you until {h.expiresAt ? format(h.expiresAt, "MMM d") : "soon"}</Badge>
+                      <Badge className="bg-success/15 text-success">{h.expiresAt ? t("bookActions.reservedUntil", { date: h.expiresAt }) : t("bookActions.reserved")}</Badge>
                       <BorrowReservedButton bookId={h.book.id} />
                     </>
                   ) : (
-                    <Badge variant="secondary">Waiting since {format(h.createdAt, "MMM d")}</Badge>
+                    <Badge variant="secondary">{t("loansPage.waitingSince", { date: h.createdAt })}</Badge>
                   )}
                   <CancelHoldButton holdId={h.id} />
                 </div>
@@ -275,42 +314,41 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
       <section id="fines" className="mt-10 scroll-mt-20 space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <Receipt className="size-5 text-primary" /> Fines
+          <Receipt className="size-5 text-primary" /> {t("loansPage.fines")}
           {owed > 0 && (
             <Badge variant="outline" className="border-destructive/40 text-destructive">
-              {formatMoney(owed, lib.currency)} owed
+              {t("loansPage.owed", { amount: money(owed, lib.currency) })}
             </Badge>
           )}
         </h2>
         {myFines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No fines. Thanks for bringing books back on time!</p>
+          <p className="text-sm text-muted-foreground">{t("loansPage.noFines")}</p>
         ) : (
           <>
             {lib.blockAtCents > 0 && owed >= lib.blockAtCents && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm">
-                Borrowing is paused while you owe {formatMoney(lib.blockAtCents, lib.currency)} or more. Fines can be paid at the {lib.name} desk.
+                {t(canPayOnline ? "loansPage.pausedOnline" : "loansPage.paused", { amount: money(lib.blockAtCents, lib.currency), library: lib.name })}
               </p>
             )}
+            {canPayOnline && <PayFinesButton amount={money(owed, lib.currency)} />}
             <ul className="divide-y rounded-xl border bg-card text-sm">
               {myFines.map((f) => (
                 <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <span className="min-w-0">
-                    <span className="block font-medium capitalize">
-                      {f.reason === "overdue" ? "Late return" : f.reason === "lost" ? "Lost book" : "Damage"}
-                      {f.loan?.book ? <span className="font-normal normal-case text-muted-foreground"> · {f.loan.book.title}</span> : null}
+                    <span className="block font-medium">
+                      {t(`fineReasons.${f.reason}`)}
+                      {f.loan?.book ? <span className="font-normal text-muted-foreground"> · {f.loan.book.title}</span> : null}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {format(f.createdAt, "MMM d, yyyy")}
+                      {date(f.createdAt, "medium")}
                       {f.note ? ` · ${f.note}` : ""}
+                      {f.paymentRef ? ` · ${t("payments.paidOnline")}` : ""}
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="font-medium tabular-nums">{formatMoney(f.amountCents, lib.currency)}</span>
-                    <Badge
-                      variant={f.status === "open" ? "outline" : "secondary"}
-                      className={cn("capitalize", f.status === "open" && "border-destructive/40 text-destructive")}
-                    >
-                      {f.status === "open" ? "Unpaid" : f.status}
+                    <span className="font-medium tabular-nums">{money(f.amountCents, lib.currency)}</span>
+                    <Badge variant={f.status === "open" ? "outline" : "secondary"} className={cn(f.status === "open" && "border-destructive/40 text-destructive")}>
+                      {t(`fineStatus.${f.status}`)}
                     </Badge>
                   </span>
                 </li>
@@ -322,10 +360,10 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
       <section className="mt-10 space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <History className="size-5 text-primary" /> Reading history
+          <History className="size-5 text-primary" /> {t("loansPage.history")}
         </h2>
         {myHistory.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Books you return will appear here.</p>
+          <p className="text-sm text-muted-foreground">{t("loansPage.noHistory")}</p>
         ) : (
           <ul className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
             {myHistory.map((l) => (
@@ -333,7 +371,7 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                 <Link href={`/books/${l.book.id}`} className="group block space-y-1.5">
                   <BookCover title={l.book.title} author={l.book.author} coverUrl={l.book.coverUrl} size="sm" />
                   <p className="line-clamp-1 text-xs font-medium group-hover:text-primary">{l.book.title}</p>
-                  <p className="text-[0.7rem] text-muted-foreground">Returned {format(l.returnedAt!, "MMM d")}</p>
+                  <p className="text-[0.7rem] text-muted-foreground">{t("loansPage.returnedOn", { date: l.returnedAt! })}</p>
                 </Link>
               </li>
             ))}

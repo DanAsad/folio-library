@@ -1,22 +1,32 @@
 // Notifications and the daily reminder job. Deliberately free of `server-only` so the seed
 // script can run the same job to give the demo realistic notifications.
 import { and, eq, gte, inArray, isNull, lt, lte } from "drizzle-orm";
-import { format } from "date-fns";
 import type { DB } from "@/lib/db/client";
 import { libraries, loans, notifications, users, type Notification } from "@/lib/db/schema";
 import { emailConfigured, isDeliverable, sendEmail } from "@/lib/email";
-import { daysLate, formatMoney, overdueFineCents } from "@/lib/money";
+import { daysLate, overdueFineCents } from "@/lib/money";
+import { english, stored, type StoredText } from "@/i18n/stored";
 
 const DAY = 24 * 60 * 60 * 1000;
 /** Members get a "due soon" reminder this many days before the due date. */
 export const DUE_SOON_DAYS = 2;
 
 type Executor = Pick<DB, "insert">;
-export type NewNotification = Omit<typeof notifications.$inferInsert, "id" | "createdAt" | "readAt" | "emailedAt">;
+export type NewNotification = Omit<typeof notifications.$inferInsert, "id" | "createdAt" | "readAt" | "emailedAt" | "title" | "body" | "i18n"> & {
+  title: StoredText;
+  body: StoredText;
+};
 
-/** Creates a notification unless one with the same dedupe key already exists. */
-export async function notify(db: Executor, n: NewNotification) {
-  const [row] = await db.insert(notifications).values(n).onConflictDoNothing({ target: notifications.dedupeKey }).returning();
+/**
+ * Creates a notification unless one with the same dedupe key already exists. Title and body are
+ * stored as message keys (shown in each reader's language) plus an English copy for email.
+ */
+export async function notify(db: Executor, { title, body, ...n }: NewNotification) {
+  const [row] = await db
+    .insert(notifications)
+    .values({ ...n, title: english(title), body: english(body), i18n: { title, body } })
+    .onConflictDoNothing({ target: notifications.dedupeKey })
+    .returning();
   return row as Notification | undefined;
 }
 
@@ -40,8 +50,13 @@ export async function generateReminders(db: DB, now = new Date()) {
           userId: loan.userId,
           libraryId: lib.id,
           kind: "due_soon",
-          title: `“${loan.book.title}” is due ${daysLate(now, loan.dueAt) === 0 ? "today" : format(loan.dueAt, "EEEE, MMM d")}`,
-          body: `Return or renew it at ${lib.name} by then.${lib.finePerDayCents ? ` Late returns cost ${formatMoney(lib.finePerDayCents, lib.currency)} a day.` : ""}`,
+          title:
+            daysLate(now, loan.dueAt) === 0
+              ? stored("notify.dueToday.title", { title: loan.book.title })
+              : stored("notify.dueSoon.title", { title: loan.book.title, date: loan.dueAt }),
+          body: lib.finePerDayCents
+            ? stored("notify.dueSoon.bodyFine", { library: lib.name, amount: { cents: lib.finePerDayCents, currency: lib.currency } })
+            : stored("notify.dueSoon.body", { library: lib.name }),
           href,
           dedupeKey: `due_soon:${loan.id}:${loan.dueAt.toISOString().slice(0, 10)}`,
         });
@@ -54,8 +69,10 @@ export async function generateReminders(db: DB, now = new Date()) {
           userId: loan.userId,
           libraryId: lib.id,
           kind: "overdue",
-          title: `“${loan.book.title}” is ${late} day${late === 1 ? "" : "s"} overdue`,
-          body: `Please return it to ${lib.name} so others can borrow it.${fine ? ` Late fee so far: ${formatMoney(fine, lib.currency)}.` : ""}`,
+          title: stored("notify.overdue.title", { title: loan.book.title, count: late }),
+          body: fine
+            ? stored("notify.overdue.bodyFine", { library: lib.name, amount: { cents: fine, currency: lib.currency } })
+            : stored("notify.overdue.body", { library: lib.name }),
           href,
           dedupeKey: `overdue:${loan.id}:${loan.dueAt.toISOString().slice(0, 10)}:w${week}`,
         });

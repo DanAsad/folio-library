@@ -9,12 +9,15 @@ import { addCopies, LibraryError, updateCopy } from "@/lib/library";
 import { authorize } from "@/lib/session";
 import { bookInput, type BookInput } from "@/lib/validation";
 import { parseCsv } from "@/lib/csv";
+import { getI18n } from "@/i18n/server";
+import { activityText } from "@/i18n/stored";
+import { translateIssue } from "@/i18n/issues";
 import { run } from "./result";
 
 async function ownBook(libraryId: string, id: string) {
   const db = await getDb();
   const book = await db.query.books.findFirst({ where: and(eq(books.id, id), eq(books.libraryId, libraryId)) });
-  if (!book) throw new LibraryError("Book not found.");
+  if (!book) throw new LibraryError("errors.bookNotFound");
   return book;
 }
 
@@ -30,13 +33,14 @@ export async function createBook(input: BookInput) {
         actorId: user.id,
         action: "book.create",
         bookId: created.id,
-        message: `${user.name} added “${created.title}”`,
+        ...activityText("activity.bookCreate", { member: user.name, title: created.title }),
       });
       await addCopies({ libraryId: user.library.id, bookId: created.id, count, condition: "new", actorId: null }, tx);
       return created;
     });
     revalidatePath("/", "layout");
-    return { message: `Added “${book.title}” with ${count} cop${count === 1 ? "y" : "ies"}`, data: { id: book.id } };
+    const { t } = await getI18n();
+    return { message: t("actions.bookAdded", { title: book.title, count }), data: { id: book.id } };
   });
 }
 
@@ -57,10 +61,11 @@ export async function updateBook(id: string, input: BookInput) {
       actorId: user.id,
       action: "book.update",
       bookId: id,
-      message: `${user.name} updated “${book.title}”`,
+      ...activityText("activity.bookUpdate", { member: user.name, title: book.title }),
     });
     revalidatePath("/", "layout");
-    return { message: "Changes saved", data: { id } };
+    const { t } = await getI18n();
+    return { message: t("actions.changesSaved"), data: { id } };
   });
 }
 
@@ -70,16 +75,17 @@ export async function deleteBook(id: string) {
     const book = await ownBook(user.library.id, id);
     const db = await getDb();
     const out = await db.query.loans.findFirst({ where: and(eq(loans.bookId, id), isNull(loans.returnedAt)) });
-    if (out) throw new LibraryError("This book is on loan. Check all copies in before deleting it.");
+    if (out) throw new LibraryError("errors.deleteOnLoan");
     await db.delete(books).where(eq(books.id, id));
     await db.insert(activity).values({
       libraryId: user.library.id,
       actorId: user.id,
       action: "book.delete",
-      message: `${user.name} deleted “${book.title}”`,
+      ...activityText("activity.bookDelete", { member: user.name, title: book.title }),
     });
     revalidatePath("/", "layout");
-    return { message: `Deleted “${book.title}”` };
+    const { t } = await getI18n();
+    return { message: t("actions.bookDeleted", { title: book.title }) };
   });
 }
 
@@ -94,7 +100,13 @@ export async function addCopiesToBook(bookId: string, count: number, condition: 
       actorId: user.id,
     });
     revalidatePath("/", "layout");
-    return { message: `Added ${res.barcodes.length === 1 ? `copy ${res.barcodes[0]}` : `copies ${res.barcodes[0]} to ${res.barcodes.at(-1)}`}` };
+    const { t } = await getI18n();
+    return {
+      message:
+        res.barcodes.length === 1
+          ? t("actions.copyAdded", { barcode: res.barcodes[0] })
+          : t("actions.copiesAdded", { first: res.barcodes[0], last: res.barcodes.at(-1) }),
+    };
   });
 }
 
@@ -110,7 +122,8 @@ export async function editCopy(copyId: string, patch: z.input<typeof copyPatch>)
     const data = copyPatch.parse(patch);
     const res = await updateCopy({ libraryId: user.library.id, copyId, ...data, actorId: user.id });
     revalidatePath("/", "layout");
-    return { message: res.what === "unchanged" ? "No changes" : `Copy ${res.barcode} ${res.what}` };
+    const { t, tk } = await getI18n();
+    return { message: res.what === "unchanged" ? t("actions.noChanges") : tk(`activity.copyUpdate.${res.what}`, { barcode: res.barcode, title: res.title, condition: data.condition ? tk(`conditions.${data.condition}`) : "" }) };
   });
 }
 
@@ -139,11 +152,13 @@ const CSV_COLUMNS: Record<string, keyof BookInput> = {
 export async function importBooksCsv(csv: string) {
   return run(async () => {
     const user = await authorize("books:manage");
+    const i18n = await getI18n();
+    const { t } = i18n;
     const rows = parseCsv(csv);
-    if (rows.length < 2) throw new LibraryError("The file needs a header row and at least one book.");
+    if (rows.length < 2) throw new LibraryError("errors.csvEmpty");
     const header = rows[0].map((h) => CSV_COLUMNS[h.trim().toLowerCase().replace(/\s+/g, "_")]);
     if (!header.includes("title") || !header.includes("author")) {
-      throw new LibraryError("The header row must include at least “title” and “author”.");
+      throw new LibraryError("errors.csvHeader");
     }
 
     const valid: ReturnType<typeof bookInput.parse>[] = [];
@@ -156,10 +171,16 @@ export async function importBooksCsv(csv: string) {
       });
       const parsed = bookInput.safeParse(record);
       if (parsed.success) valid.push(parsed.data);
-      else errors.push(`Row ${i + 2}: ${parsed.error.issues[0]?.message}`);
+      else {
+        const msg = parsed.error.issues[0]?.message ?? "";
+        errors.push(t("actions.csvRow", { row: i + 2, error: translateIssue(i18n, msg) }));
+      }
     });
-    if (!valid.length) throw new LibraryError(errors[0] ?? "No valid rows found.");
-    if (valid.length > 500) throw new LibraryError("Import at most 500 books at a time.");
+    if (!valid.length) {
+      if (errors[0]) throw new LibraryError("errors.csvRowError", { error: errors[0] });
+      throw new LibraryError("errors.csvNoRows");
+    }
+    if (valid.length > 500) throw new LibraryError("errors.csvTooMany");
 
     const db = await getDb();
     const copyCount = await db.transaction(async (tx) => {
@@ -177,12 +198,12 @@ export async function importBooksCsv(csv: string) {
         libraryId: user.library.id,
         actorId: user.id,
         action: "book.import",
-        message: `${user.name} imported ${valid.length} book${valid.length === 1 ? "" : "s"} (${n} copies) from CSV`,
+        ...activityText("activity.bookImport", { member: user.name, count: valid.length, copies: n }),
       });
       return n;
     });
     revalidatePath("/", "layout");
-    const skipped = errors.length ? ` (${errors.length} row${errors.length === 1 ? "" : "s"} skipped: ${errors.slice(0, 2).join("; ")})` : "";
-    return { message: `Imported ${valid.length} book${valid.length === 1 ? "" : "s"} with ${copyCount} copies${skipped}` };
+    const imported = t("actions.imported", { count: valid.length, copies: copyCount });
+    return { message: errors.length ? t("actions.importedSkipped", { message: imported, count: errors.length, errors: errors.slice(0, 2).join("; ") }) : imported };
   });
 }

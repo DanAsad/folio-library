@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { chargeFine, settleFine } from "@/lib/actions/fines";
 import { addPerson } from "@/lib/actions/misc";
 import type { ActionResult } from "@/lib/actions/result";
+import { useI18n } from "@/i18n/client";
 
 function useRun() {
   const [pending, start] = useTransition();
@@ -27,13 +28,14 @@ function useRun() {
 
 export function FineButtons({ fineId }: { fineId: string }) {
   const { pending, run } = useRun();
+  const { t } = useI18n();
   return (
     <div className="flex justify-end gap-1">
       <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => settleFine(fineId, "paid"))}>
-        {pending ? <Loader2 className="animate-spin" /> : <HandCoins />} Paid
+        {pending ? <Loader2 className="animate-spin" /> : <HandCoins />} {t("fineStatus.paid")}
       </Button>
-      <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => settleFine(fineId, "waived", "Waived at the desk"))}>
-        <XCircle /> Waive
+      <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => settleFine(fineId, "waived", t("members.waivedNote")))}>
+        <XCircle /> {t("members.waive")}
       </Button>
     </div>
   );
@@ -46,17 +48,18 @@ export function ChargeFineDialog({ members, currency }: { members: { id: string;
   const [reason, setReason] = useState<"damaged" | "lost" | "overdue">("damaged");
   const [note, setNote] = useState("");
   const { pending, run } = useRun();
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline">
-          <Receipt /> Charge a fee
+          <Receipt /> {t("members.chargeFee")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Charge a fee</DialogTitle>
-          <DialogDescription>For damage or anything else the automatic late fees don&apos;t cover. The member is notified.</DialogDescription>
+          <DialogTitle>{t("members.chargeFee")}</DialogTitle>
+          <DialogDescription>{t("members.chargeBody")}</DialogDescription>
         </DialogHeader>
         <form
           id="charge-form"
@@ -71,10 +74,10 @@ export function ChargeFineDialog({ members, currency }: { members: { id: string;
           }}
         >
           <div className="grid gap-1.5">
-            <Label>Member</Label>
+            <Label>{t("loansPage.member")}</Label>
             <Select value={userId} onValueChange={setUserId}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Choose a member…" />
+                <SelectValue placeholder={t("bookActions.chooseMember")} />
               </SelectTrigger>
               <SelectContent>
                 {members.map((m) => (
@@ -87,34 +90,34 @@ export function ChargeFineDialog({ members, currency }: { members: { id: string;
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="fine-amount">Amount ({currency})</Label>
+              <Label htmlFor="fine-amount">{t("members.amountIn", { currency })}</Label>
               <Input id="fine-amount" inputMode="decimal" placeholder="3.50" value={amount} onChange={(e) => setAmount(e.target.value)} required />
             </div>
             <div className="grid gap-1.5">
-              <Label>Reason</Label>
+              <Label>{t("members.reason")}</Label>
               <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="damaged">Damage</SelectItem>
-                  <SelectItem value="lost">Lost item</SelectItem>
-                  <SelectItem value="overdue">Late return</SelectItem>
+                  <SelectItem value="damaged">{t("fineReasons.damaged")}</SelectItem>
+                  <SelectItem value="lost">{t("fineReasons.lost")}</SelectItem>
+                  <SelectItem value="overdue">{t("fineReasons.overdue")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="fine-note">Note</Label>
-            <Input id="fine-note" placeholder="e.g. Torn cover on CEN-00012" value={note} onChange={(e) => setNote(e.target.value)} />
+            <Label htmlFor="fine-note">{t("members.note")}</Label>
+            <Input id="fine-note" placeholder={t("members.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </form>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" form="charge-form" disabled={pending || !userId || !amount}>
-            {pending && <Loader2 className="animate-spin" />} Charge
+            {pending && <Loader2 className="animate-spin" />} {t("members.charge")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -128,17 +131,18 @@ export function AddPersonDialog({ libraryName }: { libraryName: string }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<"member" | "librarian" | "admin">("member");
   const { pending, run } = useRun();
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
-          <UserPlus /> Add person
+          <UserPlus /> {t("members.addPerson")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add someone to {libraryName}</DialogTitle>
-          <DialogDescription>Creates a member record so staff can lend books to them at the desk. Only the demo accounts can sign in.</DialogDescription>
+          <DialogTitle>{t("members.addTitle", { library: libraryName })}</DialogTitle>
+          <DialogDescription>{t("members.addBody")}</DialogDescription>
         </DialogHeader>
         <form
           id="person-form"
@@ -154,33 +158,33 @@ export function AddPersonDialog({ libraryName }: { libraryName: string }) {
           }}
         >
           <div className="grid gap-1.5">
-            <Label htmlFor="person-email">Email</Label>
+            <Label htmlFor="person-email">{t("members.email")}</Label>
             <Input id="person-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="person-name">Name</Label>
-            <Input id="person-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Optional" />
+            <Label htmlFor="person-name">{t("members.name")}</Label>
+            <Input id="person-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("members.optional")} />
           </div>
           <div className="grid gap-1.5">
-            <Label>Role</Label>
+            <Label>{t("members.role")}</Label>
             <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="librarian">Librarian</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="member">{t("roles.member")}</SelectItem>
+                <SelectItem value="librarian">{t("roles.librarian")}</SelectItem>
+                <SelectItem value="admin">{t("roles.admin")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </form>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" form="person-form" disabled={pending}>
-            {pending && <Loader2 className="animate-spin" />} Add
+            {pending && <Loader2 className="animate-spin" />} {t("members.add")}
           </Button>
         </DialogFooter>
       </DialogContent>

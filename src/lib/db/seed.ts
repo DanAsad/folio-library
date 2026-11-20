@@ -18,6 +18,7 @@ import { SEED_BOOKS } from "./seed-books";
 import metadata from "./seed-metadata.json";
 import { overdueFineCents } from "../money";
 import { generateReminders, notify } from "../reminders";
+import { activityText, stored } from "../../i18n/stored";
 
 type Meta = { isbn?: string; coverUrl?: string; pages?: number; publisher?: string };
 const META = metadata as Record<string, Meta>;
@@ -417,8 +418,8 @@ export async function seed(db: DB, { reset = false }: { reset?: boolean } = {}) 
     userId: ready.userId,
     libraryId: riverside.library.id,
     kind: "hold_ready",
-    title: "“The Hobbit” is waiting for you",
-    body: `A copy is on the reserve shelf at ${lib.riverside.name} until ${new Date(ready.expiresAt!).toDateString()}.`,
+    title: stored("notify.holdReady.title", { title: "The Hobbit" }),
+    body: stored("notify.holdReady.body", { library: lib.riverside.name, date: ready.expiresAt! }),
     href: `/books/${hobbitRiv.id}`,
     dedupeKey: `hold_ready:${ready.id}`,
   });
@@ -454,7 +455,7 @@ export async function seed(db: DB, { reset = false }: { reset?: boolean } = {}) 
       action: "loan.borrow",
       bookId: l.bookId,
       subjectUserId: l.userId,
-      message: `${userName.get(l.userId)} borrowed “${bookTitle.get(l.bookId)}”`,
+      ...activityText("activity.borrowSimple", { member: userName.get(l.userId), title: bookTitle.get(l.bookId) }),
       createdAt: l.borrowedAt,
     });
     if (l.returnedAt) {
@@ -465,7 +466,7 @@ export async function seed(db: DB, { reset = false }: { reset?: boolean } = {}) 
         action: lost ? "copy.lost" : "loan.return",
         bookId: l.bookId,
         subjectUserId: l.userId,
-        message: lost ? `Copy of “${bookTitle.get(l.bookId)}” borrowed by ${userName.get(l.userId)} marked lost` : `${userName.get(l.userId)} returned “${bookTitle.get(l.bookId)}”`,
+        ...activityText(lost ? "activity.lostSimple" : "activity.returnSimple", { member: userName.get(l.userId), title: bookTitle.get(l.bookId) }),
         createdAt: l.returnedAt,
       });
     }

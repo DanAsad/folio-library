@@ -1,18 +1,22 @@
+"use client";
+
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 type Avail = { available: number; totalCopies: number; waitingHolds: number; readyHolds?: number };
 
 export function AvailabilityBadge({ book, className, long }: { book: Avail; className?: string; long?: boolean }) {
   const { available, totalCopies, waitingHolds } = book;
+  const { t } = useI18n();
   let tone: "ok" | "low" | "out";
   let label: string;
   if (available > 0) {
     tone = available === 1 && totalCopies > 1 ? "low" : "ok";
-    label = long ? `${available} of ${totalCopies} available` : totalCopies > 1 ? `${available} available` : "Available";
+    label = long ? t("availability.ofTotal", { count: available, total: totalCopies }) : totalCopies > 1 ? t("availability.count", { count: available }) : t("books.available");
   } else {
     tone = "out";
-    label = waitingHolds > 0 ? `On loan · ${waitingHolds} waiting` : (book.readyHolds ?? 0) > 0 ? "Reserved" : "On loan";
+    label = waitingHolds > 0 ? t("availability.waiting", { count: waitingHolds }) : (book.readyHolds ?? 0) > 0 ? t("availability.reserved") : t("books.onLoan");
   }
   return (
     <span
@@ -38,9 +42,10 @@ export function AvailabilityBadge({ book, className, long }: { book: Avail; clas
 }
 
 export function Stars({ value, count, size = "sm" }: { value: number | null; count?: number; size?: "sm" | "md" }) {
-  if (value === null) return <span className="text-xs text-muted-foreground">No ratings yet</span>;
+  const { t, number } = useI18n();
+  if (value === null) return <span className="text-xs text-muted-foreground">{t("ratings.none")}</span>;
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" aria-label={`Rated ${value} out of 5`}>
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" aria-label={t("ratings.label", { value: number(value, { maximumFractionDigits: 1 }) })}>
       <span className="flex">
         {[1, 2, 3, 4, 5].map((i) => (
           <Star
@@ -52,7 +57,7 @@ export function Stars({ value, count, size = "sm" }: { value: number | null; cou
           />
         ))}
       </span>
-      <span className="tabular-nums">{value.toFixed(1)}</span>
+      <span className="tabular-nums">{number(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
       {count !== undefined && <span>({count})</span>}
     </span>
   );

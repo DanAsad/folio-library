@@ -4,10 +4,13 @@ import { getDb } from "@/lib/db/client";
 import { holds, libraries, loans, notifications } from "@/lib/db/schema";
 import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
+import { getI18n } from "@/i18n/server";
+import { renderStored } from "@/i18n/stored";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const db = await getDb();
+  const i18n = await getI18n();
   const staff = can(user.role, "loans:manage");
   const lib = user.library.id;
 
@@ -43,8 +46,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         items: recent.map(({ n, library }) => ({
           id: n.id,
           kind: n.kind,
-          title: n.title,
-          body: n.body,
+          title: renderStored(i18n, n.i18n?.title, n.title),
+          body: renderStored(i18n, n.i18n?.body, n.body),
           href: n.href,
           library,
           libraryId: n.libraryId,

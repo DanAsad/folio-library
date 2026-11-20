@@ -2,12 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatDistanceToNowStrict } from "date-fns";
 import { AlertTriangle, Bell, BellRing, CalendarClock, CheckCheck, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { markNotificationsRead, switchLibrary } from "@/lib/actions/library";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 export type NotificationItem = {
   id: string;
@@ -36,6 +36,7 @@ export function NotificationsBell({
   currentLibraryId: string;
 }) {
   const router = useRouter();
+  const { t, relative } = useI18n();
   const [open, setOpen] = useState(false);
   const [, start] = useTransition();
 
@@ -48,7 +49,7 @@ export function NotificationsBell({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}>
+        <Button variant="ghost" size="icon" className="relative" aria-label={unread ? t("notifications.ariaUnread", { count: unread }) : t("notifications.title")}>
           <Bell />
           {unread > 0 && (
             <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.6rem] leading-4 font-semibold text-white tabular-nums">
@@ -59,15 +60,15 @@ export function NotificationsBell({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <p className="font-medium">Notifications</p>
+          <p className="font-medium">{t("notifications.title")}</p>
           {unread > 0 && (
             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => read()}>
-              <CheckCheck /> Mark all read
+              <CheckCheck /> {t("notifications.markAllRead")}
             </Button>
           )}
         </div>
         {items.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">You&apos;re all caught up.</p>
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("notifications.empty")}</p>
         ) : (
           <ul className="max-h-96 divide-y overflow-y-auto">
             {items.map((n) => {
@@ -93,11 +94,11 @@ export function NotificationsBell({
                       <span className="block text-sm font-medium">{n.title}</span>
                       <span className="block text-xs text-muted-foreground">{n.body}</span>
                       <span className="block text-[0.7rem] text-muted-foreground">
-                        {formatDistanceToNowStrict(new Date(n.createdAt), { addSuffix: true })}
+                        {relative(n.createdAt)}
                         {multiLibrary ? ` · ${n.library}` : ""}
                       </span>
                     </span>
-                    {!n.read && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
+                    {!n.read && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label={t("notifications.unread")} />}
                   </button>
                 </li>
               );

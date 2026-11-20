@@ -6,11 +6,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { importBooksCsv } from "@/lib/actions/books";
+import { useI18n } from "@/i18n/client";
 
 const SAMPLE = `title,author,isbn,genre,year,copies,tags
 The Left Hand of Darkness,Ursula K. Le Guin,9780441478125,Science Fiction,1969,1,gender;anthropology`;
 
 export function ImportCsvButton() {
+  const { t, rich } = useI18n();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [pending, start] = useTransition();
@@ -32,15 +34,14 @@ export function ImportCsvButton() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          <Upload /> Import CSV
+          <Upload /> {t("csv.import")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Import books from CSV</DialogTitle>
+          <DialogTitle>{t("csv.title")}</DialogTitle>
           <DialogDescription>
-            Columns: <code>title</code>, <code>author</code> (required), plus any of isbn, genre, year, publisher, pages, language,
-            description, cover_url, copies, shelf, tags (separated by <code>;</code>).
+            {rich("csv.columns", { title: <code>title</code>, author: <code>author</code>, sep: <code>;</code> })}
           </DialogDescription>
         </DialogHeader>
         <button
@@ -49,16 +50,16 @@ export function ImportCsvButton() {
           className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-sm text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
         >
           <FileUp className="size-6" />
-          {file ? <span className="font-medium text-foreground">{file.name}</span> : "Choose a .csv file"}
+          {file ? <span className="font-medium text-foreground">{file.name}</span> : t("csv.choose")}
         </button>
         <input ref={input} type="file" accept=".csv,text/csv" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         <pre className="overflow-x-auto rounded-md bg-muted p-3 text-[0.7rem] leading-relaxed">{SAMPLE}</pre>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={submit} disabled={!file || pending}>
-            {pending && <Loader2 className="animate-spin" />} Import
+            {pending && <Loader2 className="animate-spin" />} {t("csv.importButton")}
           </Button>
         </DialogFooter>
       </DialogContent>

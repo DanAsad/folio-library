@@ -8,6 +8,7 @@ import { getDb } from "@/lib/db/client";
 import { libraries, memberships, users, type Library, type Role } from "@/lib/db/schema";
 import { can, type Permission } from "@/lib/permissions";
 import { LIBRARY_COOKIE } from "@/lib/tenancy";
+import { AppError } from "@/lib/errors";
 
 export type LibraryChoice = { id: string; name: string; tagline: string | null; role: Role };
 
@@ -72,14 +73,15 @@ export async function requirePermissionPage(permission: Permission): Promise<Cur
   return user;
 }
 
-export class ActionError extends Error {}
+/** A permission or sign-in problem, with a message key for the UI. */
+export class ActionError extends AppError {}
 
 /** For server actions: throw instead of redirecting. Permissions are checked against the current library. */
 export async function authorize(permission?: Permission): Promise<CurrentUser> {
   const user = await getCurrentUser();
-  if (!user) throw new ActionError("Please sign in first.");
+  if (!user) throw new ActionError("errors.signInFirst");
   if (permission && !can(user.role, permission)) {
-    throw new ActionError("You don't have permission to do that.");
+    throw new ActionError("errors.noPermission");
   }
   return user;
 }

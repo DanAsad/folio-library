@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { format, formatDistanceToNowStrict } from "date-fns";
 import { BellPlus, BookCheck, BookUp, Check, ChevronsUpDown, Loader2, RefreshCw, SearchX, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import { deleteBook } from "@/lib/actions/books";
 import { borrowBook, cancelHold, joinWaitlist, markLost, renewBook, returnBook } from "@/lib/actions/loans";
 import type { ActionResult } from "@/lib/actions/result";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -59,6 +59,7 @@ type Props = {
 
 export function BookActions({ bookId, available, myLoan, myHold, staff, members, freeCopies, loanDays, maxRenewals }: Props) {
   const { pending, which, run } = useAction();
+  const { t, rich, date, relative } = useI18n();
 
   let primary: React.ReactNode;
   if (myLoan) {
@@ -67,20 +68,20 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members,
     primary = (
       <div className="space-y-3">
         <p className={cn("rounded-md px-3 py-2 text-sm", overdue ? "bg-destructive/10 text-destructive" : "bg-accent text-accent-foreground")}>
-          {overdue ? `You have this book. It was due ${formatDistanceToNowStrict(due, { addSuffix: true })}.` : `You have this book until ${format(due, "EEEE, MMM d")}.`}
+          {overdue ? t("bookActions.haveItOverdue", { when: relative(due) }) : t("bookActions.haveItUntil", { date: date(due, "weekday") })}
         </p>
         <div className="grid grid-cols-2 gap-2">
           <Button disabled={pending} onClick={() => run("return", () => returnBook(myLoan.id))}>
             <Spin show={pending && which === "return"}>
               <BookCheck />
             </Spin>
-            Return
+            {t("bookActions.return")}
           </Button>
           <Button variant="outline" disabled={pending || myLoan.renewals >= maxRenewals} onClick={() => run("renew", () => renewBook(myLoan.id))}>
             <Spin show={pending && which === "renew"}>
               <RefreshCw />
             </Spin>
-            Renew
+            {t("bookActions.renew")}
           </Button>
         </div>
       </div>
@@ -89,13 +90,13 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members,
     primary = (
       <div className="space-y-3">
         <p className="rounded-md bg-success/12 px-3 py-2 text-sm text-success">
-          A copy is reserved for you{myHold.expiresAt ? ` until ${format(new Date(myHold.expiresAt), "MMM d")}` : ""}.
+          {myHold.expiresAt ? t("bookActions.reservedUntil", { date: new Date(myHold.expiresAt) }) : t("bookActions.reserved")}
         </p>
         <Button className="w-full" disabled={pending} onClick={() => run("borrow", () => borrowBook(bookId))}>
           <Spin show={pending && which === "borrow"}>
             <BookUp />
           </Spin>
-          Borrow my reserved copy
+          {t("bookActions.borrowReserved")}
         </Button>
       </div>
     );
@@ -103,13 +104,13 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members,
     primary = (
       <div className="space-y-3">
         <p className="rounded-md bg-muted px-3 py-2 text-sm">
-          You&apos;re <strong>#{myHold.position}</strong> on the waitlist. We&apos;ll reserve a copy for you when one comes back.
+          {rich("bookActions.position", { position: <strong>#{myHold.position}</strong> })}
         </p>
         <Button variant="outline" className="w-full" disabled={pending} onClick={() => run("cancel", () => cancelHold(myHold.id))}>
           <Spin show={pending && which === "cancel"}>
             <X />
           </Spin>
-          Leave waitlist
+          {t("bookActions.leaveWaitlist")}
         </Button>
       </div>
     );
@@ -119,7 +120,7 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members,
         <Spin show={pending && which === "borrow"}>
           <BookUp />
         </Spin>
-        Borrow for {loanDays} days
+        {t("bookActions.borrowFor", { count: loanDays })}
       </Button>
     );
   } else {
@@ -128,7 +129,7 @@ export function BookActions({ bookId, available, myLoan, myHold, staff, members,
         <Spin show={pending && which === "hold"}>
           <BellPlus />
         </Spin>
-        Join the waitlist
+        {t("bookActions.joinWaitlist")}
       </Button>
     );
   }
@@ -159,32 +160,33 @@ function LendDialog({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const { pending, run } = useAction();
+  const { t } = useI18n();
   const member = members.find((m) => m.id === memberId);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full" disabled={disabled}>
-          <UserPlus /> Check out to a member…
+          <UserPlus /> {t("bookActions.lendButton")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Check out to a member</DialogTitle>
-          <DialogDescription>The loan will be due in {loanDays} days. Members on the waitlist keep their place.</DialogDescription>
+          <DialogTitle>{t("bookActions.lendTitle")}</DialogTitle>
+          <DialogDescription>{t("bookActions.lendBody", { count: loanDays })}</DialogDescription>
         </DialogHeader>
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger asChild>
             <Button variant="outline" role="combobox" className="h-10 w-full justify-between font-normal">
-              {member ? `${member.name} · ${member.email}` : "Choose a member…"}
+              {member ? `${member.name} · ${member.email}` : t("bookActions.chooseMember")}
               <ChevronsUpDown className="opacity-50" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-(--radix-popover-trigger-width) p-0">
             <Command>
-              <CommandInput placeholder="Search members…" />
+              <CommandInput placeholder={t("bookActions.searchMembers")} />
               <CommandList>
-                <CommandEmpty>No member found.</CommandEmpty>
+                <CommandEmpty>{t("bookActions.noMember")}</CommandEmpty>
                 <CommandGroup>
                   {members.map((m) => (
                     <CommandItem
@@ -207,14 +209,14 @@ function LendDialog({
         </Popover>
         <div className="space-y-1.5">
           <label htmlFor="lend-barcode" className="text-sm font-medium">
-            Copy <span className="font-normal text-muted-foreground">(optional: scan or pick a barcode)</span>
+            {t("bookActions.copy")} <span className="font-normal text-muted-foreground">{t("bookActions.copyHint")}</span>
           </label>
           <input
             id="lend-barcode"
             list="lend-barcodes"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value.toUpperCase())}
-            placeholder={freeCopies[0] ? `First free copy (${freeCopies[0]})` : "No copy on the shelf"}
+            placeholder={freeCopies[0] ? t("bookActions.firstFree", { barcode: freeCopies[0] }) : t("bookActions.noneOnShelf")}
             className="h-10 w-full rounded-md border bg-transparent px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <datalist id="lend-barcodes">
@@ -225,7 +227,7 @@ function LendDialog({
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={!memberId || pending}
@@ -237,7 +239,7 @@ function LendDialog({
               })
             }
           >
-            {pending && <Loader2 className="animate-spin" />} Check out
+            {pending && <Loader2 className="animate-spin" />} {t("bookActions.checkOut")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -245,50 +247,54 @@ function LendDialog({
   );
 }
 
-export function CheckInButton({ loanId, size = "sm", label = "Check in" }: { loanId: string; size?: "sm" | "default"; label?: string }) {
+export function CheckInButton({ loanId, size = "sm", label }: { loanId: string; size?: "sm" | "default"; label?: string }) {
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <Button size={size} variant="outline" disabled={pending} onClick={() => run("checkin", () => returnBook(loanId))}>
       <Spin show={pending}>
         <BookCheck />
       </Spin>
-      {label}
+      {label ?? t("bookActions.checkIn")}
     </Button>
   );
 }
 
 export function RenewButton({ loanId, disabled }: { loanId: string; disabled?: boolean }) {
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <Button size="sm" variant="ghost" disabled={pending || disabled} onClick={() => run("renew", () => renewBook(loanId))}>
       <Spin show={pending}>
         <RefreshCw />
       </Spin>
-      Renew
+      {t("bookActions.renew")}
     </Button>
   );
 }
 
 export function CancelHoldButton({ holdId }: { holdId: string }) {
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <Button size="sm" variant="ghost" disabled={pending} onClick={() => run("cancel", () => cancelHold(holdId))}>
       <Spin show={pending}>
         <X />
       </Spin>
-      Cancel
+      {t("common.cancel")}
     </Button>
   );
 }
 
 export function BorrowReservedButton({ bookId }: { bookId: string }) {
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <Button size="sm" disabled={pending} onClick={() => run("borrow", () => borrowBook(bookId))}>
       <Spin show={pending}>
         <BookUp />
       </Spin>
-      Borrow now
+      {t("bookActions.borrowNow")}
     </Button>
   );
 }
@@ -296,22 +302,21 @@ export function BorrowReservedButton({ bookId }: { bookId: string }) {
 export function DeleteBookButton({ bookId, title, disabled }: { bookId: string; title: string; disabled?: boolean }) {
   const router = useRouter();
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="destructive" size="sm" disabled={disabled} title={disabled ? "Check in all copies before deleting" : undefined}>
-          <Trash2 /> Delete
+        <Button variant="destructive" size="sm" disabled={disabled} title={disabled ? t("bookActions.deleteDisabled") : undefined}>
+          <Trash2 /> {t("common.delete")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete “{title}”?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes the book, its reviews, waitlist and loan history. This can&apos;t be undone.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t("bookActions.deleteTitle", { title })}</AlertDialogTitle>
+          <AlertDialogDescription>{t("bookActions.deleteBody")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-white hover:bg-destructive/90"
             disabled={pending}
@@ -320,7 +325,7 @@ export function DeleteBookButton({ bookId, title, disabled }: { bookId: string; 
               run("delete", () => deleteBook(bookId), () => router.push("/books"));
             }}
           >
-            {pending && <Loader2 className="animate-spin" />} Delete book
+            {pending && <Loader2 className="animate-spin" />} {t("bookActions.deleteBook")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -330,6 +335,7 @@ export function DeleteBookButton({ bookId, title, disabled }: { bookId: string; 
 
 export function MarkLostButton({ loanId, barcode, fee }: { loanId: string; barcode: string; fee: string }) {
   const { pending, run } = useAction();
+  const { t } = useI18n();
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -337,19 +343,16 @@ export function MarkLostButton({ loanId, barcode, fee }: { loanId: string; barco
           <Spin show={pending}>
             <SearchX />
           </Spin>
-          Lost
+          {t("bookActions.lost")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Mark copy {barcode} as lost?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This closes the loan, takes the copy out of circulation and charges the member the lost-item fee ({fee}). If the book turns up, you can put the
-            copy back into circulation from the Copies tab and waive the fee.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t("bookActions.lostTitle", { barcode })}</AlertDialogTitle>
+          <AlertDialogDescription>{t("bookActions.lostBody", { fee })}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-white hover:bg-destructive/90"
             onClick={(e) => {
@@ -357,7 +360,7 @@ export function MarkLostButton({ loanId, barcode, fee }: { loanId: string; barco
               run("lost", () => markLost(loanId));
             }}
           >
-            Mark lost
+            {t("bookActions.markLost")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

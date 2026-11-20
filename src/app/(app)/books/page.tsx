@@ -9,13 +9,18 @@ import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { CatalogToolbar } from "./catalog-toolbar";
 import { ImportCsvButton } from "./import-csv";
+import { getI18n } from "@/i18n/server";
 
-export const metadata = { title: "Catalogue" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("nav.catalogue") };
+}
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default async function CataloguePage({ searchParams }: PageProps<"/books">) {
   const user = await requireUser();
+  const { t, rich } = await getI18n();
   const sp = await searchParams;
   const q = one(sp.q)?.trim() ?? "";
   const field = (SEARCH_FIELDS as readonly string[]).includes(one(sp.field) ?? "") ? (one(sp.field) as SearchField) : "all";
@@ -49,30 +54,30 @@ export default async function CataloguePage({ searchParams }: PageProps<"/books"
   const staff = can(user.role, "books:manage");
   const chips = interpretation
     ? [
-        filters.genre && `Genre: ${filters.genre}`,
-        (filters.yearFrom || filters.yearTo) && `Published ${filters.yearFrom ?? "…"}–${filters.yearTo ?? "now"}`,
-        filters.availableOnly && "Available now",
-        filters.q && `Keywords: “${filters.q}”`,
+        filters.genre && t("catalogue.chipGenre", { genre: filters.genre }),
+        (filters.yearFrom || filters.yearTo) && t("catalogue.chipYears", { from: filters.yearFrom ?? "…", to: filters.yearTo ?? t("catalogue.now") }),
+        filters.availableOnly && t("catalogue.availableNow"),
+        filters.q && t("catalogue.chipKeywords", { keywords: filters.q }),
       ].filter(Boolean)
     : [];
 
   return (
     <>
       <PageHeader
-        title="Catalogue"
-        description={`${books.length} ${books.length === 1 ? "book" : "books"}${q ? ` matching “${q}”` : " in the collection"}`}
+        title={t("nav.catalogue")}
+        description={q ? t("catalogue.countMatching", { count: books.length, query: q }) : t("catalogue.count", { count: books.length })}
         actions={
           staff && (
             <>
               <ImportCsvButton />
               <Button variant="outline" size="sm" asChild>
                 <a href="/api/books/export" download>
-                  <Download /> Export CSV
+                  <Download /> {t("catalogue.exportCsv")}
                 </a>
               </Button>
               <Button size="sm" asChild>
                 <Link href="/books/new">
-                  <Plus /> Add book
+                  <Plus /> {t("shell.addBook")}
                 </Link>
               </Button>
             </>
@@ -95,8 +100,8 @@ export default async function CataloguePage({ searchParams }: PageProps<"/books"
       )}
       <div className="mt-6">
         {books.length === 0 ? (
-          <EmptyState icon={<SearchX className="size-5" />} title="No books found">
-            Try fewer words, a different field, or turn on <strong>Smart search</strong> and describe what you&apos;re looking for.
+          <EmptyState icon={<SearchX className="size-5" />} title={t("catalogue.noneTitle")}>
+            {rich("catalogue.noneBody", { smart: <strong>{t("catalogue.smartSearch")}</strong> })}
           </EmptyState>
         ) : view === "table" ? (
           <BookTable books={books} />

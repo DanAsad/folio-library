@@ -28,13 +28,13 @@ const Body = z.object({
 let blockedUntil = 0;
 
 export async function POST(req: Request) {
-  if (!(await getCurrentUser())) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
-  if (!aiEnabled()) return NextResponse.json({ error: "AI features are turned off on this site." }, { status: 503 });
+  if (!(await getCurrentUser())) return NextResponse.json({ code: "signIn", error: "Please sign in." }, { status: 401 });
+  if (!aiEnabled()) return NextResponse.json({ code: "off", error: "AI features are turned off on this site." }, { status: 503 });
 
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid AI request." }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ code: "http", error: "Invalid AI request." }, { status: 400 });
   const totalChars = parsed.data.messages.reduce((n, m) => n + m.content.length, 0);
-  if (totalChars > 80_000) return NextResponse.json({ error: "That conversation is too long. Start a new chat." }, { status: 413 });
+  if (totalChars > 80_000) return NextResponse.json({ code: "tooLong", error: "That conversation is too long. Start a new chat." }, { status: 413 });
 
   const wait = Math.ceil((blockedUntil - Date.now()) / 1000);
   if (wait > 0) return busy(wait);
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(110_000)]),
     });
   } catch {
-    return NextResponse.json({ error: "The free AI service didn't respond. Please try again in a moment." }, { status: 504 });
+    return NextResponse.json({ code: "noResponse", error: "The free AI service didn't respond. Please try again in a moment." }, { status: 504 });
   }
 
   if (upstream.status === 402 || upstream.status === 429) {
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   }
   if (!upstream.ok || !upstream.body) {
     console.warn("[ai] upstream error", upstream.status);
-    return NextResponse.json({ error: `The free AI service had a problem (HTTP ${upstream.status}). Please try again shortly.` }, { status: 502 });
+    return NextResponse.json({ code: "http", error: `The free AI service had a problem (HTTP ${upstream.status}). Please try again shortly.` }, { status: 502 });
   }
 
   return new Response(upstream.body, {
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
 function busy(seconds: number) {
   return NextResponse.json(
-    { error: `The free AI is busy (it allows one reply every 45 seconds). Try again in ${seconds}s.`, retryAfter: seconds },
+    { code: "busy", error: `The free AI is busy (it allows one reply every 45 seconds). Try again in ${seconds}s.`, retryAfter: seconds },
     { status: 429, headers: { "Retry-After": String(seconds) } },
   );
 }

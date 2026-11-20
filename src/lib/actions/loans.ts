@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { format } from "date-fns";
 import { z } from "zod";
 import { copyConditionEnum } from "@/lib/db/schema";
 import { getDb } from "@/lib/db/client";
@@ -16,9 +15,10 @@ import {
   renewLoan as renew,
   returnLoan as giveBack,
 } from "@/lib/library";
-import { formatMoney } from "@/lib/money";
 import { deliverPendingEmails } from "@/lib/reminders";
 import { ActionError, authorize } from "@/lib/session";
+import { getI18n } from "@/i18n/server";
+import type { Translator } from "@/i18n";
 import { run } from "./result";
 
 const condition = z.enum(copyConditionEnum.enumValues).optional();
@@ -32,25 +32,21 @@ function sendEmailsLater() {
 export async function borrowBook(bookId: string, forUserId?: string, barcode?: string) {
   return run(async () => {
     const user = await authorize();
+    const { t } = await getI18n();
     const targetId = forUserId && forUserId !== user.id ? forUserId : user.id;
     if ((targetId !== user.id || barcode) && !can(user.role, "loans:manage")) {
-      throw new ActionError("Only librarians can check books out to other members.");
+      throw new ActionError("errors.staffOnlyCheckout");
     }
     const res = await borrow({ libraryId: user.library.id, bookId, userId: targetId, actorId: user.id, barcode: barcode || undefined });
     revalidatePath("/", "layout");
-    const due = format(res.loan.dueAt, "MMM d");
-    return {
-      message:
-        targetId === user.id
-          ? `You borrowed “${res.title}” (copy ${res.barcode}). It's due ${due}.`
-          : `“${res.title}” (${res.barcode}) checked out to ${res.memberName}, due ${due}.`,
-    };
+    const params = { title: res.title, barcode: res.barcode, member: res.memberName, date: res.loan.dueAt };
+    return { message: targetId === user.id ? t("actions.borrowed", params) : t("actions.checkedOut", params) };
   });
 }
 
-function returnedMessage(res: { title: string; late: boolean; fineCents: number; currency: string }) {
-  const fine = res.fineCents ? ` A late fee of ${formatMoney(res.fineCents, res.currency)} was added.` : res.late ? " It was a little late; no fee was charged." : "";
-  return `“${res.title}” returned.${fine}`;
+function returnedMessage({ t }: Translator, res: { title: string; late: boolean; fineCents: number; currency: string }) {
+  if (res.fineCents) return t("actions.returnedFine", { title: res.title, amount: { cents: res.fineCents, currency: res.currency } });
+  return t(res.late ? "actions.returnedLate" : "actions.returned", { title: res.title });
 }
 
 export async function returnBook(loanId: string, copyCondition?: string) {
@@ -60,7 +56,7 @@ export async function returnBook(loanId: string, copyCondition?: string) {
     const res = await giveBack({ libraryId: user.library.id, loanId, actorId: user.id, isStaff: staff, condition: staff ? condition.parse(copyCondition) : undefined });
     revalidatePath("/", "layout");
     sendEmailsLater();
-    return { message: returnedMessage(res) };
+    return { message: returnedMessage(await getI18n(), res) };
   });
 }
 
@@ -71,7 +67,8 @@ export async function checkInBarcode(barcode: string, copyCondition?: string) {
     const res = await checkInByBarcode({ libraryId: user.library.id, barcode, actorId: user.id, condition: condition.parse(copyCondition || undefined) });
     revalidatePath("/", "layout");
     sendEmailsLater();
-    return { message: `${returnedMessage(res)} (from ${res.memberName})` };
+    const i18n = await getI18n();
+    return { message: i18n.t("actions.fromMember", { message: returnedMessage(i18n, res), member: res.memberName }) };
   });
 }
 
@@ -80,7 +77,8 @@ export async function renewBook(loanId: string) {
     const user = await authorize();
     const res = await renew({ libraryId: user.library.id, loanId, actorId: user.id, isStaff: can(user.role, "loans:manage") });
     revalidatePath("/", "layout");
-    return { message: `Renewed “${res.title}”. New due date: ${format(res.dueAt, "MMM d")}.` };
+    const { t } = await getI18n();
+    return { message: t("actions.renewed", { title: res.title, date: res.dueAt }) };
   });
 }
 
@@ -90,7 +88,12 @@ export async function markLost(loanId: string) {
     const res = await markLoanLost({ libraryId: user.library.id, loanId, actorId: user.id });
     revalidatePath("/", "layout");
     sendEmailsLater();
-    return { message: `Copy ${res.barcode} marked lost${res.feeCents ? `; ${formatMoney(res.feeCents, res.currency)} replacement fee charged` : ""}.` };
+    const { t } = await getI18n();
+    return {
+      message: res.feeCents
+        ? t("actions.markedLostFee", { barcode: res.barcode, amount: { cents: res.feeCents, currency: res.currency } })
+        : t("actions.markedLost", { barcode: res.barcode }),
+    };
   });
 }
 
@@ -99,7 +102,8 @@ export async function joinWaitlist(bookId: string) {
     const user = await authorize();
     const res = await hold({ libraryId: user.library.id, bookId, userId: user.id });
     revalidatePath("/", "layout");
-    return { message: `You're #${res.position} on the waitlist for “${res.title}”. We'll hold a copy for you when it's back.` };
+    const { t } = await getI18n();
+    return { message: t("actions.joinedWaitlist", { position: res.position, title: res.title }) };
   });
 }
 
@@ -109,6 +113,7 @@ export async function cancelHold(holdId: string) {
     const res = await cancel({ libraryId: user.library.id, holdId, actorId: user.id, isStaff: can(user.role, "loans:manage") });
     revalidatePath("/", "layout");
     sendEmailsLater();
-    return { message: `Left the waitlist for “${res.title}”.` };
+    const { t } = await getI18n();
+    return { message: t("actions.leftWaitlist", { title: res.title }) };
   });
 }

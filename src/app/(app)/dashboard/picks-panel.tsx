@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BookCover } from "@/components/book-cover";
 import { AvailabilityBadge } from "@/components/books/bits";
-import { AiError, recommendBooks, type HistoryItem } from "@/lib/ai-client";
+import { recommendBooks, type HistoryItem } from "@/lib/ai-client";
+import { aiErrorMessage } from "@/lib/ai-messages";
+import { useI18n } from "@/i18n/client";
 
 export type PickBook = {
   id: string;
@@ -36,6 +38,8 @@ export function PicksPanel({
   history: HistoryItem[];
   aiAvailable: boolean;
 }) {
+  const i18n = useI18n();
+  const { t } = i18n;
   const [picks, setPicks] = useState(initial);
   const [byAi, setByAi] = useState(false);
   const [pending, start] = useTransition();
@@ -43,12 +47,12 @@ export function PicksPanel({
   const personalise = () =>
     start(async () => {
       try {
-        const res = await recommendBooks(history, candidates);
+        const res = await recommendBooks(history, candidates, i18n.locale);
         const byId = new Map(candidates.map((c) => [c.id, c]));
         setPicks(res.map((p) => ({ book: byId.get(p.id)!, reason: p.reason })));
         setByAi(true);
       } catch (err) {
-        toast.error(err instanceof AiError ? err.message : "Couldn't get AI picks right now.");
+        toast.error(aiErrorMessage(i18n, err, "ai.picksFailed"));
       }
     });
 
@@ -56,17 +60,17 @@ export function PicksPanel({
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <Sparkles className="size-5 text-primary" /> Picked for you
+          <Sparkles className="size-5 text-primary" /> {t("picks.title")}
         </h2>
         {byAi ? (
-          <span className="text-xs text-muted-foreground">Personalised by free open-source AI</span>
+          <span className="text-xs text-muted-foreground">{t("picks.byAi")}</span>
         ) : aiAvailable ? (
           <Button size="sm" variant="outline" onClick={personalise} disabled={pending}>
             {pending ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {pending ? "Asking the AI… (can take ~20s)" : "Personalise with AI"}
+            {pending ? t("picks.asking") : t("picks.personalise")}
           </Button>
         ) : (
-          <span className="text-xs text-muted-foreground">Based on your reading history</span>
+          <span className="text-xs text-muted-foreground">{t("picks.basedOnHistory")}</span>
         )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

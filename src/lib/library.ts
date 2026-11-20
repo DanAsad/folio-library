@@ -2,15 +2,20 @@ import "server-only";
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { getDb, type DB } from "@/lib/db/client";
 import { activity, books, copies, fines, holds, libraries, loans, memberships, reviews, users, type CopyCondition, type Library } from "@/lib/db/schema";
-import { formatMoney, overdueFineCents } from "@/lib/money";
+import { overdueFineCents } from "@/lib/money";
 import { notify } from "@/lib/reminders";
+import { AppError } from "@/lib/errors";
+import { activityText, keyParam, stored, type StoredText } from "@/i18n/stored";
 
 const DAY = 24 * 60 * 60 * 1000;
 
 type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
 type Executor = DB | Tx;
 
-export class LibraryError extends Error {}
+/** A rule the user broke (loan limit, overdue books, ...), with a message key for the UI. */
+export class LibraryError extends AppError {}
+
+const money = (cents: number, lib: Pick<Library, "currency">) => ({ cents, currency: lib.currency });
 
 // ---------------------------------------------------------------------------
 // Availability
@@ -82,7 +87,7 @@ function withAvailability<T extends { totalCopies: number; activeLoans: number; 
 
 export async function getLibrary(db: Executor, libraryId: string): Promise<Library> {
   const [lib] = await db.select().from(libraries).where(eq(libraries.id, libraryId));
-  if (!lib) throw new LibraryError("Library not found.");
+  if (!lib) throw new LibraryError("errors.libraryNotFound");
   return lib;
 }
 
@@ -302,14 +307,14 @@ export async function processHoldQueue(db: Executor, bookId: string) {
       action: "hold.ready",
       bookId,
       subjectUserId: h.userId,
-      message: `“${book.title}” is now reserved for ${h.user.name ?? h.user.email}`,
+      ...activityText("activity.holdReady", { title: book.title, member: h.user.name ?? h.user.email }),
     });
     await notify(db, {
       userId: h.userId,
       libraryId: lib.id,
       kind: "hold_ready",
-      title: `“${book.title}” is waiting for you`,
-      body: `A copy is on the reserve shelf at ${lib.name} until ${expiresAt.toDateString()}.`,
+      title: stored("notify.holdReady.title", { title: book.title }),
+      body: stored("notify.holdReady.body", { library: lib.name, date: expiresAt }),
       href: `/books/${bookId}`,
       dedupeKey: `hold_ready:${h.id}`,
     });
@@ -342,7 +347,7 @@ export async function getBalance(db: Executor, libraryId: string, userId: string
 async function chargeFine(
   db: Executor,
   lib: Library,
-  f: { userId: string; loanId?: string | null; amountCents: number; reason: "overdue" | "lost" | "damaged"; note?: string | null; title: string },
+  f: { userId: string; loanId?: string | null; amountCents: number; reason: "overdue" | "lost" | "damaged"; note?: string | null; about: StoredText },
 ) {
   if (f.amountCents <= 0) return null;
   const [fine] = await db
@@ -353,8 +358,8 @@ async function chargeFine(
     userId: f.userId,
     libraryId: lib.id,
     kind: "fine",
-    title: `${formatMoney(f.amountCents, lib.currency)} ${f.reason === "overdue" ? "late fee" : f.reason === "lost" ? "lost-item fee" : "damage fee"}`,
-    body: `${f.title}. You can pay at the ${lib.name} desk.`,
+    title: stored(`notify.fine.${f.reason}`, { amount: money(f.amountCents, lib) }),
+    body: f.about,
     href: "/loans?view=mine",
     dedupeKey: `fine:${fine.id}`,
   });
@@ -368,7 +373,7 @@ async function chargeFine(
 async function lockBook(tx: Executor, libraryId: string, bookId: string) {
   const res = await tx.execute(sql`select id, title, library_id from books where id = ${bookId} for update`);
   const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { id: string; title: string; library_id: string }[];
-  if (!rows.length || rows[0].library_id !== libraryId) throw new LibraryError("That book no longer exists.");
+  if (!rows.length || rows[0].library_id !== libraryId) throw new LibraryError("errors.bookGone");
   return rows[0];
 }
 
@@ -397,16 +402,15 @@ export async function borrowBook({
     await processHoldQueue(tx, bookId);
 
     const member = await membershipOf(tx, libraryId, userId);
-    if (!member) throw new LibraryError("That person isn't a member of this library.");
-    const who = member.name ?? "This member";
+    if (!member) throw new LibraryError("errors.notMember");
 
     const active = await tx.query.loans.findMany({ where: and(eq(loans.libraryId, libraryId), eq(loans.userId, userId), isNull(loans.returnedAt)) });
-    if (active.some((l) => l.bookId === bookId)) throw new LibraryError(`${who} already has this book.`);
-    if (active.length >= lib.maxLoans) throw new LibraryError(`Loan limit reached (${lib.maxLoans} books at a time).`);
-    if (active.some((l) => l.dueAt < new Date())) throw new LibraryError("Please return overdue books before borrowing more.");
+    if (active.some((l) => l.bookId === bookId)) throw new LibraryError(actorId === userId ? "errors.alreadyHaveIt" : "errors.memberHasIt", { member: member.name ?? member.email });
+    if (active.length >= lib.maxLoans) throw new LibraryError("errors.loanLimit", { count: lib.maxLoans });
+    if (active.some((l) => l.dueAt < new Date())) throw new LibraryError("errors.overdueFirst");
     const owed = await getBalance(tx, libraryId, userId);
     if (lib.blockAtCents > 0 && owed >= lib.blockAtCents) {
-      throw new LibraryError(`Unpaid fines of ${formatMoney(owed, lib.currency)} need to be settled at the desk before borrowing.`);
+      throw new LibraryError("errors.finesBlock", { amount: money(owed, lib) });
     }
 
     // Free copies: active and not currently on loan.
@@ -426,16 +430,14 @@ export async function borrowBook({
     const reservedForOthers = readyHolds.length - (myReady ? 1 : 0);
     if (free.length - reservedForOthers <= 0) {
       throw new LibraryError(
-        reservedForOthers > 0 && free.length > 0
-          ? "The remaining copies are reserved for members on the waitlist."
-          : "No copies available right now. Join the waitlist instead.",
+        reservedForOthers > 0 && free.length > 0 ? "errors.reservedForOthers" : "errors.noCopies",
       );
     }
     let copy = free[0];
     if (barcode) {
       const wanted = barcode.trim().toUpperCase();
       const match = free.find((c) => c.barcode.toUpperCase() === wanted);
-      if (!match) throw new LibraryError(`Copy ${wanted} isn't available for this book.`);
+      if (!match) throw new LibraryError("errors.copyUnavailable", { barcode: wanted });
       copy = match;
     }
 
@@ -465,10 +467,11 @@ export async function borrowBook({
       action: "loan.borrow",
       bookId,
       subjectUserId: userId,
-      message:
-        actorId === userId
-          ? `${member.name ?? member.email} borrowed “${book.title}” (${copy.barcode})`
-          : `“${book.title}” (${copy.barcode}) checked out to ${member.name ?? member.email}`,
+      ...activityText(actorId === userId ? "activity.borrow" : "activity.checkOut", {
+        member: member.name ?? member.email,
+        title: book.title,
+        barcode: copy.barcode,
+      }),
     });
     return { loan, barcode: copy.barcode, title: book.title, memberName: member.name ?? member.email };
   });
@@ -494,9 +497,9 @@ export async function returnLoan({
   const db = await getDb();
   return db.transaction(async (tx) => {
     const loan = await tx.query.loans.findFirst({ where: eq(loans.id, loanId), with: { user: true, copy: true } });
-    if (!loan || loan.libraryId !== libraryId) throw new LibraryError("Loan not found.");
-    if (loan.returnedAt) throw new LibraryError("This book was already returned.");
-    if (!isStaff && loan.userId !== actorId) throw new LibraryError("You can only return your own books.");
+    if (!loan || loan.libraryId !== libraryId) throw new LibraryError("errors.loanNotFound");
+    if (loan.returnedAt) throw new LibraryError("errors.alreadyReturned");
+    if (!isStaff && loan.userId !== actorId) throw new LibraryError("errors.returnOwn");
     const book = await lockBook(tx, libraryId, loan.bookId);
     const lib = await getLibrary(tx, libraryId);
 
@@ -511,7 +514,7 @@ export async function returnLoan({
       loanId,
       amountCents: overdueFineCents(lib, loan.dueAt, now),
       reason: "overdue",
-      title: `“${book.title}” came back after its due date`,
+      about: stored("notify.fine.aboutLate", { title: book.title }),
     });
     await tx.insert(activity).values({
       libraryId,
@@ -519,9 +522,12 @@ export async function returnLoan({
       action: "loan.return",
       bookId: loan.bookId,
       subjectUserId: loan.userId,
-      message: `${loan.user.name ?? loan.user.email} returned “${book.title}” (${loan.copy.barcode})${late ? " late" : ""}${
-        fine ? `, ${formatMoney(fine.amountCents, lib.currency)} fine` : ""
-      }`,
+      ...activityText(fine ? "activity.returnFine" : late ? "activity.returnLate" : "activity.return", {
+        member: loan.user.name ?? loan.user.email,
+        title: book.title,
+        barcode: loan.copy.barcode,
+        amount: fine ? money(fine.amountCents, lib) : null,
+      }),
     });
     await processHoldQueue(tx, loan.bookId);
     return { title: book.title, late, fineCents: fine?.amountCents ?? 0, currency: lib.currency, memberName: loan.user.name ?? loan.user.email };
@@ -532,7 +538,7 @@ export async function returnLoan({
 export async function checkInByBarcode({ libraryId, barcode, actorId, condition }: { libraryId: string; barcode: string; actorId: string; condition?: CopyCondition }) {
   const db = await getDb();
   const code = barcode.trim().toUpperCase();
-  if (!code) throw new LibraryError("Scan or type a barcode.");
+  if (!code) throw new LibraryError("errors.barcodeRequired");
   const [row] = await db
     .select({ loanId: loans.id })
     .from(loans)
@@ -544,7 +550,7 @@ export async function checkInByBarcode({ libraryId, barcode, actorId, condition 
       .from(copies)
       .innerJoin(books, eq(books.id, copies.bookId))
       .where(and(eq(books.libraryId, libraryId), sql`upper(${copies.barcode}) = ${code}`));
-    throw new LibraryError(exists ? `Copy ${code} isn't on loan.` : `No copy with barcode ${code} in this library.`);
+    throw new LibraryError(exists ? "errors.copyNotOnLoan" : "errors.noSuchBarcode", { barcode: code });
   }
   return returnLoan({ libraryId, loanId: row.loanId, actorId, isStaff: true, condition });
 }
@@ -552,14 +558,14 @@ export async function checkInByBarcode({ libraryId, barcode, actorId, condition 
 export async function renewLoan({ libraryId, loanId, actorId, isStaff }: { libraryId: string; loanId: string; actorId: string; isStaff: boolean }) {
   const db = await getDb();
   const loan = await db.query.loans.findFirst({ where: eq(loans.id, loanId), with: { book: true } });
-  if (!loan || loan.returnedAt || loan.libraryId !== libraryId) throw new LibraryError("Loan not found.");
-  if (!isStaff && loan.userId !== actorId) throw new LibraryError("You can only renew your own books.");
+  if (!loan || loan.returnedAt || loan.libraryId !== libraryId) throw new LibraryError("errors.loanNotFound");
+  if (!isStaff && loan.userId !== actorId) throw new LibraryError("errors.renewOwn");
   const lib = await getLibrary(db, libraryId);
-  if (loan.renewals >= lib.maxRenewals) throw new LibraryError(`This loan has already been renewed ${lib.maxRenewals} times.`);
+  if (loan.renewals >= lib.maxRenewals) throw new LibraryError("errors.renewLimit", { count: lib.maxRenewals });
   const waiting = await db.query.holds.findFirst({
     where: and(eq(holds.bookId, loan.bookId), eq(holds.status, "waiting")),
   });
-  if (waiting) throw new LibraryError("Someone is waiting for this book, so it can't be renewed.");
+  if (waiting) throw new LibraryError("errors.renewWaiting");
 
   const base = Math.max(loan.dueAt.getTime(), Date.now());
   const dueAt = new Date(base + lib.loanDays * DAY);
@@ -570,7 +576,7 @@ export async function renewLoan({ libraryId, loanId, actorId, isStaff }: { libra
     action: "loan.renew",
     bookId: loan.bookId,
     subjectUserId: loan.userId,
-    message: `Loan of “${loan.book.title}” renewed until ${dueAt.toDateString()}`,
+    ...activityText("activity.renew", { title: loan.book.title, date: dueAt }),
   });
   return { dueAt, title: loan.book.title };
 }
@@ -580,18 +586,18 @@ export async function markLoanLost({ libraryId, loanId, actorId }: { libraryId: 
   const db = await getDb();
   return db.transaction(async (tx) => {
     const loan = await tx.query.loans.findFirst({ where: eq(loans.id, loanId), with: { user: true, copy: true } });
-    if (!loan || loan.libraryId !== libraryId || loan.returnedAt) throw new LibraryError("Loan not found.");
+    if (!loan || loan.libraryId !== libraryId || loan.returnedAt) throw new LibraryError("errors.loanNotFound");
     const book = await lockBook(tx, libraryId, loan.bookId);
     const lib = await getLibrary(tx, libraryId);
     await tx.update(loans).set({ returnedAt: new Date() }).where(eq(loans.id, loanId));
-    await tx.update(copies).set({ status: "lost", note: `Lost by ${loan.user.name ?? loan.user.email}` }).where(eq(copies.id, loan.copyId));
+    await tx.update(copies).set({ status: "lost" }).where(eq(copies.id, loan.copyId));
     const fine = await chargeFine(tx, lib, {
       userId: loan.userId,
       loanId,
       amountCents: lib.lostItemFeeCents,
       reason: "lost",
-      note: `Replacement for ${loan.copy.barcode}`,
-      title: `Copy ${loan.copy.barcode} of “${book.title}” was marked lost`,
+      note: loan.copy.barcode,
+      about: stored("notify.fine.aboutLost", { title: book.title, barcode: loan.copy.barcode }),
     });
     await tx.insert(activity).values({
       libraryId,
@@ -599,9 +605,12 @@ export async function markLoanLost({ libraryId, loanId, actorId }: { libraryId: 
       action: "copy.lost",
       bookId: loan.bookId,
       subjectUserId: loan.userId,
-      message: `Copy ${loan.copy.barcode} of “${book.title}” borrowed by ${loan.user.name ?? loan.user.email} marked lost${
-        fine ? ` (${formatMoney(fine.amountCents, lib.currency)} fee)` : ""
-      }`,
+      ...activityText(fine ? "activity.lostFee" : "activity.lost", {
+        member: loan.user.name ?? loan.user.email,
+        title: book.title,
+        barcode: loan.copy.barcode,
+        amount: fine ? money(fine.amountCents, lib) : null,
+      }),
     });
     return { title: book.title, barcode: loan.copy.barcode, feeCents: fine?.amountCents ?? 0, currency: lib.currency };
   });
@@ -615,15 +624,15 @@ export async function placeHold({ libraryId, bookId, userId }: { libraryId: stri
   const db = await getDb();
   return db.transaction(async (tx) => {
     const book = await lockBook(tx, libraryId, bookId);
-    if (!(await membershipOf(tx, libraryId, userId))) throw new LibraryError("You aren't a member of this library.");
+    if (!(await membershipOf(tx, libraryId, userId))) throw new LibraryError("errors.youNotMember");
     const existing = await tx.query.holds.findFirst({
       where: and(eq(holds.bookId, bookId), eq(holds.userId, userId), inArray(holds.status, ["waiting", "ready"])),
     });
-    if (existing) throw new LibraryError("You're already on the waitlist for this book.");
+    if (existing) throw new LibraryError("errors.alreadyWaiting");
     const hasIt = await tx.query.loans.findFirst({
       where: and(eq(loans.bookId, bookId), eq(loans.userId, userId), isNull(loans.returnedAt)),
     });
-    if (hasIt) throw new LibraryError("You already have this book.");
+    if (hasIt) throw new LibraryError("errors.alreadyHaveIt");
 
     const [hold] = await tx.insert(holds).values({ libraryId, bookId, userId }).returning();
     const member = await tx.query.users.findFirst({ where: eq(users.id, userId) });
@@ -633,7 +642,7 @@ export async function placeHold({ libraryId, bookId, userId }: { libraryId: stri
       action: "hold.place",
       bookId,
       subjectUserId: userId,
-      message: `${member?.name ?? "A member"} joined the waitlist for “${book.title}”`,
+      ...activityText("activity.holdPlace", { member: member?.name ?? member?.email ?? "?", title: book.title }),
     });
     await processHoldQueue(tx, bookId);
     // Compare inside SQL: Postgres keeps microseconds, a JavaScript Date only milliseconds.
@@ -654,8 +663,8 @@ export async function placeHold({ libraryId, bookId, userId }: { libraryId: stri
 export async function cancelHold({ libraryId, holdId, actorId, isStaff }: { libraryId: string; holdId: string; actorId: string; isStaff: boolean }) {
   const db = await getDb();
   const hold = await db.query.holds.findFirst({ where: eq(holds.id, holdId), with: { book: true } });
-  if (!hold || hold.libraryId !== libraryId || !["waiting", "ready"].includes(hold.status)) throw new LibraryError("Hold not found.");
-  if (!isStaff && hold.userId !== actorId) throw new LibraryError("You can only cancel your own holds.");
+  if (!hold || hold.libraryId !== libraryId || !["waiting", "ready"].includes(hold.status)) throw new LibraryError("errors.holdNotFound");
+  if (!isStaff && hold.userId !== actorId) throw new LibraryError("errors.cancelOwn");
   await db.update(holds).set({ status: "cancelled" }).where(eq(holds.id, holdId));
   await processHoldQueue(db, hold.bookId);
   return { title: hold.book.title };
@@ -692,7 +701,7 @@ export async function addCopies(
   },
   tx?: Executor,
 ) {
-  if (!Number.isInteger(count) || count < 1 || count > 50) throw new LibraryError("Add between 1 and 50 copies at a time.");
+  if (!Number.isInteger(count) || count < 1 || count > 50) throw new LibraryError("errors.copyCount");
   const work = async (t: Executor) => {
     await t.execute(sql`select id from libraries where id = ${libraryId} for update`);
     const book = await lockBook(t, libraryId, bookId);
@@ -708,7 +717,12 @@ export async function addCopies(
         actorId,
         action: "copy.add",
         bookId,
-        message: `Added ${count} cop${count === 1 ? "y" : "ies"} of “${book.title}” (${barcodes[0]}${count > 1 ? ` to ${barcodes.at(-1)}` : ""})`,
+        ...activityText(count === 1 ? "activity.copyAddOne" : "activity.copyAdd", {
+          count,
+          title: book.title,
+          first: barcodes[0],
+          last: barcodes.at(-1),
+        }),
       });
     }
     await processHoldQueue(t, bookId); // new copies may serve the waitlist
@@ -738,33 +752,29 @@ export async function updateCopy({
   const db = await getDb();
   return db.transaction(async (tx) => {
     const copy = await tx.query.copies.findFirst({ where: eq(copies.id, copyId), with: { book: true } });
-    if (!copy || copy.book.libraryId !== libraryId) throw new LibraryError("Copy not found.");
+    if (!copy || copy.book.libraryId !== libraryId) throw new LibraryError("errors.copyNotFound");
     await lockBook(tx, libraryId, copy.bookId);
     if (status && status !== "active" && status !== copy.status) {
       const onLoan = await tx.query.loans.findFirst({ where: and(eq(loans.copyId, copyId), isNull(loans.returnedAt)) });
-      if (onLoan) throw new LibraryError(`${copy.barcode} is on loan. Check it in first, or mark the loan as lost.`);
+      if (onLoan) throw new LibraryError("errors.copyOnLoan", { barcode: copy.barcode });
     }
     const patch: Partial<typeof copies.$inferInsert> = {};
     if (condition && condition !== copy.condition) patch.condition = condition;
     if (status && status !== copy.status) patch.status = status;
     if (note !== undefined && (note || null) !== copy.note) patch.note = note || null;
-    if (!Object.keys(patch).length) return { barcode: copy.barcode, title: copy.book.title, what: "unchanged" };
+    if (!Object.keys(patch).length) return { barcode: copy.barcode, title: copy.book.title, what: "unchanged" as const };
     await tx.update(copies).set(patch).where(eq(copies.id, copyId));
-    const what = patch.status
-      ? patch.status === "active"
-        ? "returned to circulation"
-        : patch.status === "lost"
-          ? "marked lost"
-          : "withdrawn"
-      : patch.condition
-        ? `condition set to ${patch.condition}`
-        : "note updated";
+    const what = patch.status ?? (patch.condition ? ("condition" as const) : ("note" as const));
     await tx.insert(activity).values({
       libraryId,
       actorId,
       action: "copy.update",
       bookId: copy.bookId,
-      message: `Copy ${copy.barcode} of “${copy.book.title}” ${what}`,
+      ...activityText(`activity.copyUpdate.${what}`, {
+        barcode: copy.barcode,
+        title: copy.book.title,
+        condition: keyParam(`conditions.${patch.condition ?? copy.condition}`),
+      }),
     });
     await processHoldQueue(tx, copy.bookId);
     return { barcode: copy.barcode, title: copy.book.title, what };
@@ -790,22 +800,82 @@ export async function resolveFine({
 }) {
   const db = await getDb();
   const fine = await db.query.fines.findFirst({ where: eq(fines.id, fineId), with: { user: true } });
-  if (!fine || fine.libraryId !== libraryId) throw new LibraryError("Fine not found.");
-  if (fine.status !== "open") throw new LibraryError("This fine is already settled.");
+  if (!fine || fine.libraryId !== libraryId) throw new LibraryError("errors.fineNotFound");
+  if (fine.status !== "open") throw new LibraryError("errors.fineSettled");
   const lib = await getLibrary(db, libraryId);
   await db
     .update(fines)
     .set({ status: outcome, resolvedAt: new Date(), resolvedById: actorId, note: note?.trim() || fine.note })
     .where(and(eq(fines.id, fineId), eq(fines.status, "open")));
-  const amount = formatMoney(fine.amountCents, lib.currency);
+  const amount = money(fine.amountCents, lib);
   await db.insert(activity).values({
     libraryId,
     actorId,
     action: outcome === "paid" ? "fine.paid" : "fine.waived",
     subjectUserId: fine.userId,
-    message: `${amount} ${fine.reason} fine for ${fine.user.name ?? fine.user.email} ${outcome}`,
+    ...activityText(outcome === "paid" ? "activity.finePaid" : "activity.fineWaived", {
+      amount,
+      reason: keyParam(`fineReasons.${fine.reason}`),
+      member: fine.user.name ?? fine.user.email,
+    }),
   });
   return { amount, memberName: fine.user.name ?? fine.user.email };
+}
+
+/** A member's unpaid fines at one library, oldest first (what an online payment covers). */
+export async function getOpenFines(libraryId: string, userId: string, limit = 10) {
+  const db = await getDb();
+  return db.query.fines.findMany({
+    where: and(eq(fines.libraryId, libraryId), eq(fines.userId, userId), eq(fines.status, "open")),
+    with: { loan: { with: { book: { columns: { title: true } } } } },
+    orderBy: asc(fines.createdAt),
+    limit,
+  });
+}
+
+/**
+ * Marks fines paid after a successful online payment. Idempotent: the success redirect and the
+ * webhook can both call it, and only fines that are still open (and belong to this member at
+ * this library) change. Returns how many fines this call settled.
+ */
+export async function settleFinesOnline({
+  libraryId,
+  userId,
+  fineIds,
+  paymentRef,
+  amountPaidCents,
+}: {
+  libraryId: string;
+  userId: string;
+  fineIds: string[];
+  paymentRef: string;
+  amountPaidCents: number;
+}) {
+  if (!fineIds.length) return { settled: 0 };
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const open = await tx.query.fines.findMany({
+      where: and(eq(fines.libraryId, libraryId), eq(fines.userId, userId), eq(fines.status, "open"), inArray(fines.id, fineIds)),
+      with: { user: true },
+    });
+    // Never mark more as paid than Stripe actually collected.
+    const due = open.reduce((sum, f) => sum + f.amountCents, 0);
+    if (!open.length || amountPaidCents < due) return { settled: 0 };
+    const now = new Date();
+    await tx
+      .update(fines)
+      .set({ status: "paid", resolvedAt: now, resolvedById: userId, paymentRef })
+      .where(and(inArray(fines.id, open.map((f) => f.id)), eq(fines.status, "open")));
+    const lib = await getLibrary(tx, libraryId);
+    await tx.insert(activity).values({
+      libraryId,
+      actorId: userId,
+      action: "fine.paid",
+      subjectUserId: userId,
+      ...activityText("activity.finePaidOnline", { member: open[0].user.name ?? open[0].user.email, amount: money(due, lib) }),
+    });
+    return { settled: open.length };
+  });
 }
 
 /** A manual charge at the desk, e.g. for a damaged book. */
@@ -824,18 +894,23 @@ export async function addFine({
   note?: string;
   actorId: string;
 }) {
-  if (!Number.isInteger(amountCents) || amountCents < 1 || amountCents > 100_000) throw new LibraryError("Enter an amount between 0.01 and 1,000.");
+  if (!Number.isInteger(amountCents) || amountCents < 1 || amountCents > 100_000) throw new LibraryError("errors.fineAmount");
   const db = await getDb();
   const member = await membershipOf(db, libraryId, userId);
-  if (!member) throw new LibraryError("That person isn't a member of this library.");
+  if (!member) throw new LibraryError("errors.notMember");
   const lib = await getLibrary(db, libraryId);
-  const fine = await chargeFine(db, lib, { userId, amountCents, reason, note, title: note?.trim() || "A charge was added to your account" });
+  const about = note?.trim() ? stored("notify.fine.aboutNote", { note: note.trim() }) : stored("notify.fine.aboutCharge");
+  const fine = await chargeFine(db, lib, { userId, amountCents, reason, note, about });
   await db.insert(activity).values({
     libraryId,
     actorId,
     action: "fine.add",
     subjectUserId: userId,
-    message: `${formatMoney(amountCents, lib.currency)} ${reason} fine added for ${member.name ?? member.email}`,
+    ...activityText("activity.fineAdd", {
+      amount: money(amountCents, lib),
+      reason: keyParam(`fineReasons.${reason}`),
+      member: member.name ?? member.email,
+    }),
   });
-  return { fine, memberName: member.name ?? member.email, amount: formatMoney(amountCents, lib.currency) };
+  return { fine, memberName: member.name ?? member.email, amount: money(amountCents, lib) };
 }

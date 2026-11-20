@@ -12,6 +12,8 @@ import { LibraryError } from "@/lib/library";
 import { ActionError, authorize } from "@/lib/session";
 import { LIBRARY_COOKIE } from "@/lib/tenancy";
 import { librarySettingsInput, newLibraryInput } from "@/lib/validation";
+import { getI18n } from "@/i18n/server";
+import { activityText } from "@/i18n/stored";
 import { run } from "./result";
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
@@ -25,10 +27,11 @@ export async function switchLibrary(libraryId: string) {
   return run(async () => {
     const user = await authorize();
     const target = user.libraries.find((l) => l.id === libraryId);
-    if (!target) throw new ActionError("You aren't a member of that library.");
+    if (!target) throw new ActionError("errors.youNotMember");
     await rememberLibrary(libraryId);
     revalidatePath("/", "layout");
-    return { message: `Switched to ${target.name}` };
+    const { t } = await getI18n();
+    return { message: t("actions.switched", { library: target.name }) };
   });
 }
 
@@ -58,10 +61,11 @@ export async function updateLibrarySettings(input: z.input<typeof librarySetting
       libraryId: user.library.id,
       actorId: user.id,
       action: "library.settings",
-      message: `${user.name} updated the library rules (${d.loanDays}-day loans, ${d.maxLoans} books, ${d.maxRenewals} renewals)`,
+      ...activityText("activity.librarySettings", { member: user.name, days: d.loanDays, books: d.maxLoans, renewals: d.maxRenewals }),
     });
     revalidatePath("/", "layout");
-    return { message: "Settings saved. New loans use these rules; existing due dates don't change." };
+    const { t } = await getI18n();
+    return { message: t("actions.settingsSaved") };
   });
 }
 
@@ -73,13 +77,14 @@ export async function createLibrary(input: z.input<typeof newLibraryInput>) {
     const db = await getDb();
     const slug = d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || d.code.toLowerCase();
     const clash = await db.query.libraries.findFirst({ where: (l, { or }) => or(eq(l.code, d.code), eq(l.slug, slug)) });
-    if (clash) throw new LibraryError(clash.code === d.code ? `The barcode prefix ${d.code} is taken.` : "A library with that name already exists.");
+    if (clash) throw new LibraryError(clash.code === d.code ? "errors.prefixTaken" : "errors.libraryExists", { code: d.code });
     const [lib] = await db.insert(libraries).values({ name: d.name, code: d.code, slug, tagline: d.tagline }).returning();
     await db.insert(memberships).values({ libraryId: lib.id, userId: user.id, role: "admin" });
-    await db.insert(activity).values({ libraryId: lib.id, actorId: user.id, action: "library.create", message: `${user.name} opened ${lib.name}` });
+    await db.insert(activity).values({ libraryId: lib.id, actorId: user.id, action: "library.create", ...activityText("activity.libraryCreate", { member: user.name, library: lib.name }) });
     await rememberLibrary(lib.id);
     revalidatePath("/", "layout");
-    return { message: `${lib.name} is ready. Add books to its catalogue to get started.` };
+    const { t } = await getI18n();
+    return { message: t("actions.libraryCreated", { library: lib.name }) };
   });
 }
 
@@ -87,12 +92,13 @@ export async function createLibrary(input: z.input<typeof newLibraryInput>) {
 export async function resetDemoData() {
   return run(async () => {
     await authorize("settings:manage");
-    if (!DEMO_MODE) throw new ActionError("Demo reset is turned off on this deployment.");
+    if (!DEMO_MODE) throw new ActionError("errors.resetOff");
     const db = await getDb();
     await seed(db, { reset: true });
     (await cookies()).delete(LIBRARY_COOKIE);
     revalidatePath("/", "layout");
-    return { message: "Demo data restored." };
+    const { t } = await getI18n();
+    return { message: t("actions.demoRestored") };
   });
 }
 

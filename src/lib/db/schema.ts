@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -10,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { StoredText } from "../../i18n/stored";
 
 export const roleEnum = pgEnum("role", ["admin", "librarian", "member"]);
 export const holdStatusEnum = pgEnum("hold_status", [
@@ -204,6 +206,8 @@ export const fines = pgTable(
     note: text("note"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedById: uuid("resolved_by_id").references(() => users.id, { onDelete: "set null" }),
+    /** Stripe Checkout session that paid this fine online (also stops it being applied twice). */
+    paymentRef: text("payment_ref"),
     ...timestamps,
   },
   (t) => [index("fines_library_status_idx").on(t.libraryId, t.status), index("fines_user_idx").on(t.userId)],
@@ -225,6 +229,8 @@ export const notifications = pgTable(
     href: text("href"),
     /** Stops the daily job from sending the same reminder twice. */
     dedupeKey: text("dedupe_key").notNull().unique(),
+    /** Title and body as message keys, so each reader sees them in their language. */
+    i18n: jsonb("i18n").$type<{ title: StoredText; body: StoredText }>(),
     readAt: timestamp("read_at", { withTimezone: true }),
     emailedAt: timestamp("emailed_at", { withTimezone: true }),
     ...timestamps,
@@ -261,6 +267,8 @@ export const activity = pgTable(
     bookId: uuid("book_id").references(() => books.id, { onDelete: "set null" }),
     subjectUserId: uuid("subject_user_id").references(() => users.id, { onDelete: "set null" }),
     message: text("message").notNull(),
+    /** The message as a key + parameters, rendered in the reader's language. */
+    i18n: jsonb("i18n").$type<StoredText>(),
     ...timestamps,
   },
   (t) => [index("activity_created_idx").on(t.createdAt), index("activity_library_idx").on(t.libraryId)],

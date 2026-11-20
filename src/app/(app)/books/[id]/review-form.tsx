@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { saveReview } from "@/lib/actions/misc";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 export function ReviewForm({ bookId, existing }: { bookId: string; existing: { rating: number; body: string } | null }) {
+  const { t } = useI18n();
   const [rating, setRating] = useState(existing?.rating ?? 0);
   const [hover, setHover] = useState(0);
   const [body, setBody] = useState(existing?.body ?? "");
@@ -18,7 +20,7 @@ export function ReviewForm({ bookId, existing }: { bookId: string; existing: { r
   if (!open) {
     return (
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        Edit your review
+        {t("reviews.edit")}
       </Button>
     );
   }
@@ -38,15 +40,15 @@ export function ReviewForm({ bookId, existing }: { bookId: string; existing: { r
       }}
     >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">{existing ? "Your review" : "Rate this book"}</p>
-        <div className="flex" onMouseLeave={() => setHover(0)} role="radiogroup" aria-label="Rating">
+        <p className="text-sm font-medium">{existing ? t("reviews.yours") : t("reviews.rate")}</p>
+        <div className="flex" onMouseLeave={() => setHover(0)} role="radiogroup" aria-label={t("bookFields.rating")}>
           {[1, 2, 3, 4, 5].map((i) => (
             <button
               key={i}
               type="button"
               role="radio"
               aria-checked={rating === i}
-              aria-label={`${i} star${i > 1 ? "s" : ""}`}
+              aria-label={t("reviews.stars", { count: i })}
               onMouseEnter={() => setHover(i)}
               onClick={() => setRating(i)}
               className="p-0.5"
@@ -56,15 +58,15 @@ export function ReviewForm({ bookId, existing }: { bookId: string; existing: { r
           ))}
         </div>
       </div>
-      <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="What did you think? (optional)" rows={3} />
+      <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("reviews.placeholder")} rows={3} />
       <div className="flex justify-end gap-2">
         {existing && (
           <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         )}
         <Button type="submit" size="sm" disabled={pending || rating === 0}>
-          {pending && <Loader2 className="animate-spin" />} {existing ? "Update review" : "Post review"}
+          {pending && <Loader2 className="animate-spin" />} {existing ? t("reviews.update") : t("reviews.post")}
         </Button>
       </div>
     </form>

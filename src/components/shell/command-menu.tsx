@@ -17,6 +17,7 @@ import {
 import { navFor } from "@/components/shell/nav";
 import { can } from "@/lib/permissions";
 import type { CurrentUser } from "@/lib/session";
+import { useI18n } from "@/i18n/client";
 
 type Hit = { id: string; title: string; author: string; available: number };
 
@@ -38,6 +39,7 @@ export function useCommandMenu() {
 export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (o: boolean) => void; user: CurrentUser }) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
 
@@ -64,14 +66,14 @@ export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (
   };
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Search books or jump to a page">
+    <CommandDialog open={open} onOpenChange={setOpen} title={t("command.title")} description={t("command.description")}>
       {/* The cmdk root must wrap the input and list; CommandDialog doesn't add it. */}
       <Command>
-      <CommandInput placeholder="Search books, authors, ISBN, or type a command…" value={query} onValueChange={setQuery} />
+      <CommandInput placeholder={t("command.placeholder")} value={query} onValueChange={setQuery} />
       <CommandList>
-        <CommandEmpty>No matches. Press Enter to ask the AI librarian.</CommandEmpty>
+        <CommandEmpty>{t("command.empty")}</CommandEmpty>
         {query.trim() && hits.length > 0 && (
-          <CommandGroup heading="Books">
+          <CommandGroup heading={t("command.books")}>
             {hits.map((b) => (
               <CommandItem key={b.id} value={`book-${b.id}-${b.title}-${b.author}`}
                 keywords={[query]} // the server already matched it (ISBN, tags, barcode…), so never hide it
@@ -81,37 +83,37 @@ export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (
                   {b.title} <span className="text-muted-foreground">· {b.author}</span>
                 </span>
                 <span className={`ml-auto text-xs ${b.available ? "text-success" : "text-muted-foreground"}`}>
-                  {b.available ? "Available" : "On loan"}
+                  {b.available ? t("books.available") : t("books.onLoan")}
                 </span>
               </CommandItem>
             ))}
           </CommandGroup>
         )}
         {query.trim() && (
-          <CommandGroup heading="Search">
+          <CommandGroup heading={t("command.search")}>
             <CommandItem value={`search-all-${query}`} onSelect={() => go(`/books?q=${encodeURIComponent(query)}`)}>
-              <Search /> Search the catalogue for “{query}”
+              <Search /> {t("command.searchCatalogue", { query })}
             </CommandItem>
             <CommandItem value={`ai-search-${query}`} onSelect={() => go(`/books?ai=1&q=${encodeURIComponent(query)}`)}>
-              <Sparkles /> Smart search: “{query}”
+              <Sparkles /> {t("command.smartSearch", { query })}
             </CommandItem>
             <CommandItem value={`ask-${query}`} onSelect={() => go(`/assistant?q=${encodeURIComponent(query)}`)}>
-              <Sparkles /> Ask the Librarian: “{query}”
+              <Sparkles /> {t("command.askLibrarian", { query })}
             </CommandItem>
           </CommandGroup>
         )}
         <CommandSeparator />
-        <CommandGroup heading="Go to">
+        <CommandGroup heading={t("command.goTo")}>
           {navFor(user.role).map((n) => (
-            <CommandItem key={n.href} value={`nav-${n.label}`} onSelect={() => go(n.href)}>
-              {n.label}
+            <CommandItem key={n.href} value={`nav-${n.href}-${t(n.label)}`} onSelect={() => go(n.href)}>
+              {t(n.label)}
             </CommandItem>
           ))}
         </CommandGroup>
-        <CommandGroup heading="Actions">
+        <CommandGroup heading={t("command.actions")}>
           {can(user.role, "books:manage") && (
             <CommandItem value="action-add-book" onSelect={() => go("/books/new")}>
-              <Plus /> Add a book
+              <Plus /> {t("command.addBook")}
             </CommandItem>
           )}
           <CommandItem
@@ -121,7 +123,7 @@ export function CommandMenu({ open, setOpen, user }: { open: boolean; setOpen: (
               setOpen(false);
             }}
           >
-            <Moon /> Toggle dark mode
+            <Moon /> {t("command.toggleTheme")}
           </CommandItem>
         </CommandGroup>
       </CommandList>

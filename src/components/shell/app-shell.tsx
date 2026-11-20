@@ -38,7 +38,9 @@ import { LibrarySwitcher } from "@/components/shell/library-switcher";
 import { navFor, type NavItem } from "@/components/shell/nav";
 import { NotificationsBell, type NotificationItem } from "@/components/shell/notifications-bell";
 import { signOutAction } from "@/lib/actions/auth";
-import { ROLE_LABEL, can } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useI18n } from "@/i18n/client";
 import type { CurrentUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/format";
@@ -56,6 +58,7 @@ const ICONS: Record<NavItem["icon"], typeof Activity> = {
 
 function NavLinks({ user, badges, onNavigate }: { user: CurrentUser; badges: Record<string, number>; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { t } = useI18n();
   return (
     <nav className="grid gap-1">
       {navFor(user.role).map((item) => {
@@ -75,7 +78,7 @@ function NavLinks({ user, badges, onNavigate }: { user: CurrentUser; badges: Rec
             )}
           >
             <Icon className={cn("size-4", active && "text-primary")} />
-            <span className="flex-1">{item.label}</span>
+            <span className="flex-1">{t(item.label)}</span>
             {count ? (
               <span className="rounded-full bg-destructive/15 px-1.5 text-[0.7rem] font-semibold text-destructive tabular-nums">{count}</span>
             ) : null}
@@ -88,11 +91,12 @@ function NavLinks({ user, badges, onNavigate }: { user: CurrentUser; badges: Rec
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
+  const { t } = useI18n();
   return (
     <Button
       variant="ghost"
       size="icon"
-      aria-label="Toggle dark mode"
+      aria-label={t("shell.toggleTheme")}
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
     >
       <Sun className="hidden dark:block" />
@@ -114,11 +118,12 @@ export function AppShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const command = useCommandMenu();
+  const { t, rich } = useI18n();
 
   const sidebarFooter = (
     <div className="rounded-lg border bg-card/60 p-3 text-xs text-muted-foreground">
-      <p className="font-medium text-foreground">Tip</p>
-      Press <kbd className="rounded border bg-muted px-1 font-mono">Ctrl</kbd> + <kbd className="rounded border bg-muted px-1 font-mono">K</kbd> to search anything.
+      <p className="font-medium text-foreground">{t("shell.tip")}</p>
+      {rich("shell.tipSearch", { keys: <><kbd className="rounded border bg-muted px-1 font-mono">Ctrl</kbd> + <kbd className="rounded border bg-muted px-1 font-mono">K</kbd></> })}
     </div>
   );
 
@@ -136,12 +141,12 @@ export function AppShell({
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-4 backdrop-blur sm:px-6">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
+              <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t("shell.openMenu")}>
                 <Menu />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 bg-sidebar p-5">
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <SheetTitle className="sr-only">{t("shell.navigation")}</SheetTitle>
               <div className="flex h-full flex-col gap-6">
                 <Logo />
                 <LibrarySwitcher user={user} onNavigate={() => setMobileOpen(false)} />
@@ -157,7 +162,7 @@ export function AppShell({
             className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm text-muted-foreground transition-colors hover:border-primary/30 sm:max-w-md"
           >
             <Search className="size-4" />
-            <span className="flex-1 truncate text-left">Search books, authors, ISBN…</span>
+            <span className="flex-1 truncate text-left">{t("shell.searchPlaceholder")}</span>
             <kbd className="hidden rounded border bg-muted px-1.5 font-mono text-[0.7rem] sm:inline">Ctrl K</kbd>
           </button>
 
@@ -165,15 +170,16 @@ export function AppShell({
             {can(user.role, "books:manage") && (
               <Button asChild size="sm" className="hidden sm:inline-flex">
                 <Link href="/books/new">
-                  <Plus /> Add book
+                  <Plus /> {t("shell.addBook")}
                 </Link>
               </Button>
             )}
             <NotificationsBell items={notifications.items} unread={notifications.unread} multiLibrary={user.libraries.length > 1} currentLibraryId={user.library.id} />
+            <LanguageSwitcher />
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" className="rounded-full ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" aria-label="Account menu">
+                <button type="button" className="rounded-full ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("shell.accountMenu")}>
                   <Avatar className="size-8">
                     {user.image && <AvatarImage src={user.image} alt="" />}
                     <AvatarFallback className="bg-accent text-xs font-semibold text-accent-foreground">{initials(user.name)}</AvatarFallback>
@@ -185,17 +191,17 @@ export function AppShell({
                   <p className="truncate text-sm font-medium">{user.name}</p>
                   <p className="truncate text-xs font-normal text-muted-foreground">{user.email}</p>
                   <Badge variant="secondary">
-                    {ROLE_LABEL[user.role]} · {user.library.name}
+                    {t(`roles.${user.role}`)} · {user.library.name}
                   </Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/loans">
-                    <BookMarked /> My loans
+                    <BookMarked /> {t("shell.myLoans")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => signOutAction()}>
-                  <LogOut /> Sign out
+                  <LogOut /> {t("shell.signOut")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

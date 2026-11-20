@@ -21,15 +21,3 @@ export function can(role: Role | undefined | null, permission: Permission): bool
   if (!role) return false;
   return (PERMISSIONS[permission] as readonly Role[]).includes(role);
 }
-
-export const ROLE_LABEL: Record<Role, string> = {
-  admin: "Admin",
-  librarian: "Librarian",
-  member: "Member",
-};
-
-export const ROLE_DESCRIPTION: Record<Role, string> = {
-  admin: "Full access, including people, roles and the library's rules.",
-  librarian: "Runs the desk: catalogue, copies, check-in/out and fines.",
-  member: "Browses the catalogue, borrows, returns, joins waitlists and reviews.",
-};

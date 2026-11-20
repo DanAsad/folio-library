@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createLibrary, resetDemoData, updateLibrarySettings } from "@/lib/actions/library";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/client";
 
 export type SettingsValues = {
   name: string;
@@ -50,6 +51,7 @@ function Field({ label, hint, className, children }: { label: string; hint?: str
 
 export function SettingsForm({ initial }: { initial: SettingsValues }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [v, setV] = useState(initial);
   const [pending, start] = useTransition();
   const set = (k: keyof SettingsValues) => (e: React.ChangeEvent<HTMLInputElement>) => setV((s) => ({ ...s, [k]: e.target.value }));
@@ -76,39 +78,39 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
     >
       <Card>
         <CardHeader>
-          <CardTitle>Library</CardTitle>
-          <CardDescription>How this library appears to members.</CardDescription>
+          <CardTitle>{t("settings.library")}</CardTitle>
+          <CardDescription>{t("settings.libraryBody")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name">
+          <Field label={t("members.name")}>
             <Input value={v.name} onChange={set("name")} required />
           </Field>
-          <Field label="Tagline">
-            <Input value={v.tagline} onChange={set("tagline")} placeholder="Optional" />
+          <Field label={t("settings.tagline")}>
+            <Input value={v.tagline} onChange={set("tagline")} placeholder={t("members.optional")} />
           </Field>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Lending rules</CardTitle>
-          <CardDescription>Apply to new loans and holds. Existing due dates stay as they are.</CardDescription>
+          <CardTitle>{t("settings.lending")}</CardTitle>
+          <CardDescription>{t("settings.lendingBody")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Loan period">{num("loanDays", "days")}</Field>
-          <Field label="Books at a time">{num("maxLoans", "books")}</Field>
-          <Field label="Renewals per loan">{num("maxRenewals", "times")}</Field>
-          <Field label="Hold pickup window">{num("holdPickupDays", "days")}</Field>
+          <Field label={t("fields.loanDays")}>{num("loanDays", t("settings.unitDays"))}</Field>
+          <Field label={t("settings.booksAtATime")}>{num("maxLoans", t("settings.unitBooks"))}</Field>
+          <Field label={t("settings.renewalsPerLoan")}>{num("maxRenewals", t("settings.unitTimes"))}</Field>
+          <Field label={t("settings.pickupWindow")}>{num("holdPickupDays", t("settings.unitDays"))}</Field>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Fines</CardTitle>
-          <CardDescription>Late fees are charged automatically when a book comes back late. Set the daily fine to 0 to turn them off.</CardDescription>
+          <CardTitle>{t("loansPage.fines")}</CardTitle>
+          <CardDescription>{t("settings.finesBody")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Currency">
+          <Field label={t("settings.currency")}>
             <Select value={v.currency} onValueChange={(c) => setV((s) => ({ ...s, currency: c }))}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -122,15 +124,15 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Fine per day late">{num("finePerDay", v.currency)}</Field>
-          <Field label="Grace period" hint="Days late before fines start">
-            {num("fineGraceDays", "days")}
+          <Field label={t("settings.finePerDay")}>{num("finePerDay", v.currency)}</Field>
+          <Field label={t("fields.fineGraceDays")} hint={t("settings.graceHint")}>
+            {num("fineGraceDays", t("settings.unitDays"))}
           </Field>
-          <Field label="Maximum per loan" hint="0 means no cap">
+          <Field label={t("settings.maxPerLoan")} hint={t("settings.maxHint")}>
             {num("maxFine", v.currency)}
           </Field>
-          <Field label="Lost-item fee">{num("lostItemFee", v.currency)}</Field>
-          <Field label="Pause borrowing when owing" hint="0 never pauses borrowing">
+          <Field label={t("fields.lostItemFee")}>{num("lostItemFee", v.currency)}</Field>
+          <Field label={t("settings.pauseWhen")} hint={t("settings.pauseHint")}>
             {num("blockAt", v.currency)}
           </Field>
         </CardContent>
@@ -138,7 +140,7 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
 
       <div className="flex justify-end">
         <Button type="submit" disabled={pending}>
-          {pending ? <Loader2 className="animate-spin" /> : <Save />} Save settings
+          {pending ? <Loader2 className="animate-spin" /> : <Save />} {t("settings.save")}
         </Button>
       </div>
     </form>
@@ -151,6 +153,7 @@ export function NewLibraryForm() {
   const [code, setCode] = useState("");
   const [tagline, setTagline] = useState("");
   const [pending, start] = useTransition();
+  const { t } = useI18n();
   return (
     <form
       className="grid gap-4 sm:grid-cols-[2fr_1fr_2fr_auto] sm:items-end"
@@ -166,17 +169,17 @@ export function NewLibraryForm() {
         });
       }}
     >
-      <Field label="Name">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Eastside Branch Library" required />
+      <Field label={t("members.name")}>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("settings.newNamePlaceholder")} required />
       </Field>
-      <Field label="Barcode prefix">
+      <Field label={t("settings.prefix")}>
         <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="EST" maxLength={5} className="font-mono" required />
       </Field>
-      <Field label="Tagline">
-        <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Optional" />
+      <Field label={t("settings.tagline")}>
+        <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={t("members.optional")} />
       </Field>
       <Button type="submit" disabled={pending}>
-        {pending ? <Loader2 className="animate-spin" /> : <Building2 />} Create
+        {pending ? <Loader2 className="animate-spin" /> : <Building2 />} {t("settings.create")}
       </Button>
     </form>
   );
@@ -185,22 +188,21 @@ export function NewLibraryForm() {
 export function ResetDemoButton() {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { t } = useI18n();
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button variant="outline" disabled={pending}>
-          {pending ? <Loader2 className="animate-spin" /> : <RotateCcw />} Reset demo data now
+          {pending ? <Loader2 className="animate-spin" /> : <RotateCcw />} {t("settings.resetNow")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Reset all demo data?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Every library is restored to the sample catalogue, loans, fines and waitlists. Changes anyone made are lost, and people added by admins are removed.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t("settings.resetTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("settings.resetBody")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               e.preventDefault();
@@ -214,7 +216,7 @@ export function ResetDemoButton() {
               });
             }}
           >
-            Reset
+            {t("settings.reset")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

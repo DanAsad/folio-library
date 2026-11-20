@@ -12,31 +12,36 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { BarcodeScannerDialog } from "@/components/barcode-scanner";
-import { AiError, interpretSearch } from "@/lib/ai-client";
+import { interpretSearch } from "@/lib/ai-client";
+import { aiErrorMessage } from "@/lib/ai-messages";
+import { useI18n } from "@/i18n/client";
+import type { MessageKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
-const FIELDS = [
-  ["all", "All fields"],
-  ["title", "Title"],
-  ["author", "Author"],
-  ["isbn", "ISBN"],
-  ["genre", "Genre"],
-  ["tags", "Tags"],
-  ["publisher", "Publisher"],
-] as const;
+const FIELDS: [string, MessageKey][] = [
+  ["all", "catalogue.fields.all"],
+  ["title", "bookFields.title"],
+  ["author", "bookFields.author"],
+  ["isbn", "catalogue.fields.isbn"],
+  ["genre", "bookFields.genre"],
+  ["tags", "bookFields.tags"],
+  ["publisher", "bookFields.publisher"],
+];
 
-const SORT_LABELS = [
-  ["relevance", "Best match"],
-  ["title", "Title A–Z"],
-  ["author", "Author A–Z"],
-  ["popular", "Most borrowed"],
-  ["rating", "Highest rated"],
-  ["year", "Publication year"],
-  ["newest", "Recently added"],
-] as const;
+const SORT_LABELS: [string, MessageKey][] = [
+  ["relevance", "catalogue.sorts.relevance"],
+  ["title", "catalogue.sorts.title"],
+  ["author", "catalogue.sorts.author"],
+  ["popular", "catalogue.sorts.popular"],
+  ["rating", "catalogue.sorts.rating"],
+  ["year", "catalogue.sorts.year"],
+  ["newest", "catalogue.sorts.newest"],
+];
 
 export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAvailable: boolean }) {
   const router = useRouter();
+  const i18n = useI18n();
+  const { t } = i18n;
   const pathname = usePathname();
   const params = useSearchParams();
   const [navPending, startTransition] = useTransition();
@@ -65,12 +70,12 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
     if (!query) return;
     startAi(async () => {
       try {
-        const plan = await interpretSearch(query, genres);
+        const plan = await interpretSearch(query, genres, i18n.locale);
         update({
           ai: "1",
           q: query,
           field: null,
-          why: plan.explanation,
+          why: plan.explanation || t("catalogue.smartFound"),
           kw: plan.keywords,
           genre: plan.genre,
           from: plan.yearFrom ? String(plan.yearFrom) : null,
@@ -79,8 +84,8 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
           sort: plan.sort === "relevance" ? null : plan.sort,
         });
       } catch (err) {
-        toast.error(err instanceof AiError ? err.message : "Smart search failed.", { description: "Showing plain keyword results instead." });
-        update({ ai: "1", q: query, ...AI_PARAMS });
+        toast.error(aiErrorMessage(i18n, err, "catalogue.smartFailed"), { description: t("catalogue.smartFallback") });
+        update({ ai: "1", q: query, ...AI_PARAMS, why: t("catalogue.keywordResults") });
       }
     });
   };
@@ -132,24 +137,24 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={ai ? "Describe what you're after, e.g. “short sci-fi from the 90s I can borrow today”" : "Search by title, author, ISBN, genre or tag…"}
+            placeholder={ai ? t("catalogue.smartPlaceholder") : t("catalogue.placeholder")}
             className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
-            aria-label="Search the catalogue"
+            aria-label={t("catalogue.searchLabel")}
           />
           {q && (
-            <button type="button" aria-label="Clear search" className="text-muted-foreground hover:text-foreground" onClick={() => { setQ(""); update({ q: null }); }}>
+            <button type="button" aria-label={t("catalogue.clear")} className="text-muted-foreground hover:text-foreground" onClick={() => { setQ(""); update({ q: null }); }}>
               <X className="size-4" />
             </button>
           )}
           {!ai && (
             <Select value={params.get("field") ?? "all"} onValueChange={(v) => update({ field: v })}>
-              <SelectTrigger className="h-8 w-[7.5rem] border-0 border-l bg-transparent shadow-none dark:bg-transparent" aria-label="Search field">
+              <SelectTrigger className="h-8 w-[7.5rem] border-0 border-l bg-transparent shadow-none dark:bg-transparent" aria-label={t("catalogue.fieldLabel")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {FIELDS.map(([v, l]) => (
                   <SelectItem key={v} value={v}>
-                    {l}
+                    {t(l)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -157,11 +162,11 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
           )}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="mr-1" aria-label="Scan a barcode" onClick={() => setScanOpen(true)}>
+              <Button type="button" variant="ghost" size="icon" className="mr-1" aria-label={t("catalogue.scan")} onClick={() => setScanOpen(true)}>
                 <ScanBarcode />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Scan a book&apos;s barcode</TooltipContent>
+            <TooltipContent>{t("catalogue.scanTip")}</TooltipContent>
           </Tooltip>
         </div>
         <div className="flex gap-2">
@@ -174,16 +179,16 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
                 disabled={!aiAvailable}
                 onClick={() => (ai ? update({ ai: null, ...AI_PARAMS, genre: null, available: null, sort: null }) : update({ ai: "1" }))}
               >
-                <Sparkles /> Smart search
+                <Sparkles /> {t("catalogue.smartSearch")}
               </Button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              {aiAvailable ? "Describe what you want in plain English. AI turns it into filters (free, no account needed)." : "AI features are turned off on this deployment."}
+              {aiAvailable ? t("catalogue.smartTip") : t("ai.errors.off")}
             </TooltipContent>
           </Tooltip>
           {ai && (
             <Button type="submit" className="h-10" disabled={pending}>
-              Search
+              {t("command.search")}
             </Button>
           )}
         </div>
@@ -191,17 +196,17 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
 
       {aiPending && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="size-3.5 animate-spin" /> The AI is reading your request. The free service can take 10–20 seconds…
+          <Loader2 className="size-3.5 animate-spin" /> {t("catalogue.smartPending")}
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Select value={params.get("genre") ?? "all"} onValueChange={(v) => update({ genre: v })}>
-          <SelectTrigger className="h-8 w-44" aria-label="Genre">
-            <SelectValue placeholder="All genres" />
+          <SelectTrigger className="h-8 w-44" aria-label={t("bookFields.genre")}>
+            <SelectValue placeholder={t("catalogue.allGenres")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All genres</SelectItem>
+            <SelectItem value="all">{t("catalogue.allGenres")}</SelectItem>
             {genres.map((g) => (
               <SelectItem key={g} value={g}>
                 {g}
@@ -210,13 +215,13 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
           </SelectContent>
         </Select>
         <Select value={params.get("sort") ?? "relevance"} onValueChange={(v) => update({ sort: v === "relevance" ? null : v })}>
-          <SelectTrigger className="h-8 w-44" aria-label="Sort by">
+          <SelectTrigger className="h-8 w-44" aria-label={t("catalogue.sortBy")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {SORT_LABELS.map(([v, l]) => (
               <SelectItem key={v} value={v}>
-                {l}
+                {t(l)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -224,7 +229,7 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
         <div className="flex items-center gap-2">
           <Switch id="available" checked={params.get("available") === "1"} onCheckedChange={(c) => update({ available: c ? "1" : null })} />
           <Label htmlFor="available" className="text-sm font-normal">
-            Available now
+            {t("catalogue.availableNow")}
           </Label>
         </div>
         <ToggleGroup
@@ -235,10 +240,10 @@ export function CatalogToolbar({ genres, aiAvailable }: { genres: string[]; aiAv
           value={params.get("view") ?? "grid"}
           onValueChange={(v) => v && update({ view: v === "grid" ? null : v })}
         >
-          <ToggleGroupItem value="grid" aria-label="Cover grid">
+          <ToggleGroupItem value="grid" aria-label={t("catalogue.gridView")}>
             <LayoutGrid />
           </ToggleGroupItem>
-          <ToggleGroupItem value="table" aria-label="Table">
+          <ToggleGroupItem value="table" aria-label={t("catalogue.tableView")}>
             <List />
           </ToggleGroupItem>
         </ToggleGroup>

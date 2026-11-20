@@ -7,8 +7,12 @@ import { getDb } from "@/lib/db/client";
 import { books } from "@/lib/db/schema";
 import { getGenres } from "@/lib/library";
 import { requirePermissionPage } from "@/lib/session";
+import { getI18n } from "@/i18n/server";
 
-export const metadata = { title: "Edit book" };
+export async function generateMetadata() {
+  const { t } = await getI18n();
+  return { title: t("bookForm.editTitle") };
+}
 
 export default async function EditBookPage({ params }: PageProps<"/books/[id]/edit">) {
   const user = await requirePermissionPage("books:manage");
@@ -17,11 +21,12 @@ export default async function EditBookPage({ params }: PageProps<"/books/[id]/ed
   const db = await getDb();
   const book = await db.query.books.findFirst({ where: and(eq(books.id, id), eq(books.libraryId, user.library.id)) });
   if (!book) notFound();
+  const { t } = await getI18n();
 
   const s = (v: string | number | null) => (v === null ? "" : String(v));
   return (
     <>
-      <PageHeader title="Edit book" description={book.title} />
+      <PageHeader title={t("bookForm.editTitle")} description={book.title} />
       <BookForm
         bookId={book.id}
         genres={await getGenres(user.library.id)}

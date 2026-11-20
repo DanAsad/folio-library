@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { copies, holds, notifications } from "@/lib/db/schema";
+import { copies, fines, holds, notifications } from "@/lib/db/schema";
 import {
   addCopies,
   addFine,
@@ -10,6 +10,7 @@ import {
   checkInByBarcode,
   getBalance,
   getBook,
+  getOpenFines,
   markLoanLost,
   placeHold,
   processHoldQueue,
@@ -17,6 +18,7 @@ import {
   resolveFine,
   returnLoan,
   searchBooks,
+  settleFinesOnline,
   updateCopy,
 } from "@/lib/library";
 import { generateReminders } from "@/lib/reminders";
@@ -79,7 +81,7 @@ describe("borrowing", () => {
 
     const { loan } = await borrow(a.id, member.id, { libraryId: riverside.id });
     expect(Math.round((loan.dueAt.getTime() - loan.borrowedAt.getTime()) / DAY)).toBe(21);
-    await expect(borrow(b.id, member.id, { libraryId: riverside.id })).rejects.toThrow(/Loan limit reached \(1 books/);
+    await expect(borrow(b.id, member.id, { libraryId: riverside.id })).rejects.toThrow(/Loan limit reached \(1 book at a time\)/);
   });
 
   it("records the librarian and the exact copy when staff check a book out", async () => {
@@ -119,7 +121,7 @@ describe("borrowing", () => {
     const book = await makeBook(db, lib.id, 3);
     await borrow(book.id, member.id);
 
-    await expect(borrow(book.id, member.id)).rejects.toThrow(/already has this book/);
+    await expect(borrow(book.id, member.id)).rejects.toThrow(/already have this book/);
   });
 
   it("enforces the loan limit", async () => {
@@ -239,6 +241,41 @@ describe("returning and fines", () => {
 
     expect(await getBalance(db, lib.id, member.id)).toBe(0);
     await expect(resolveFine({ libraryId: lib.id, fineId: fine!.id, outcome: "paid", actorId: librarian.id })).rejects.toThrow(/already settled/);
+  });
+});
+
+describe("online payments", () => {
+  async function owing() {
+    const member = await makeUser(db, lib.id);
+    const librarian = await makeUser(db, lib.id, "librarian");
+    const a = (await addFine({ libraryId: lib.id, userId: member.id, amountCents: 300, reason: "damaged", actorId: librarian.id })).fine!;
+    const b = (await addFine({ libraryId: lib.id, userId: member.id, amountCents: 150, reason: "overdue", actorId: librarian.id })).fine!;
+    return { member, fineIds: [a.id, b.id] };
+  }
+
+  it("marks the paid fines settled once, however often Stripe reports the payment", async () => {
+    const { member, fineIds } = await owing();
+    const pay = () => settleFinesOnline({ libraryId: lib.id, userId: member.id, fineIds, paymentRef: "cs_test_1", amountPaidCents: 450 });
+
+    expect(await pay()).toEqual({ settled: 2 });
+    expect(await pay()).toEqual({ settled: 0 }); // the webhook arriving after the redirect
+    expect(await getBalance(db, lib.id, member.id)).toBe(0);
+    const paid = await db.query.fines.findMany({ where: eq(fines.userId, member.id) });
+    expect(paid.every((f) => f.status === "paid" && f.paymentRef === "cs_test_1")).toBe(true);
+  });
+
+  it("never settles more than was paid, or someone else's fines", async () => {
+    const { member, fineIds } = await owing();
+    const stranger = await makeUser(db, lib.id);
+
+    expect(await settleFinesOnline({ libraryId: lib.id, userId: member.id, fineIds, paymentRef: "cs_short", amountPaidCents: 100 })).toEqual({ settled: 0 });
+    expect(await settleFinesOnline({ libraryId: lib.id, userId: stranger.id, fineIds, paymentRef: "cs_other", amountPaidCents: 450 })).toEqual({ settled: 0 });
+    expect(await getBalance(db, lib.id, member.id)).toBe(450);
+  });
+
+  it("lists a member's open fines, oldest first", async () => {
+    const { member, fineIds } = await owing();
+    expect((await getOpenFines(lib.id, member.id)).map((f) => f.id)).toEqual(fineIds);
   });
 });
 

@@ -8,6 +8,7 @@ import { addFine, resolveFine } from "@/lib/library";
 import { deliverPendingEmails } from "@/lib/reminders";
 import { authorize } from "@/lib/session";
 import { fineInput } from "@/lib/validation";
+import { getI18n } from "@/i18n/server";
 import { run } from "./result";
 
 export async function settleFine(fineId: string, outcome: "paid" | "waived", note?: string) {
@@ -15,7 +16,8 @@ export async function settleFine(fineId: string, outcome: "paid" | "waived", not
     const user = await authorize("fines:manage");
     const res = await resolveFine({ libraryId: user.library.id, fineId, outcome: z.enum(["paid", "waived"]).parse(outcome), actorId: user.id, note });
     revalidatePath("/", "layout");
-    return { message: `${res.amount} ${outcome === "paid" ? "payment recorded" : "waived"} for ${res.memberName}.` };
+    const { t } = await getI18n();
+    return { message: t(outcome === "paid" ? "actions.finePaid" : "actions.fineWaived", { amount: res.amount, member: res.memberName }) };
   });
 }
 
@@ -26,6 +28,7 @@ export async function chargeFine(input: z.input<typeof fineInput>) {
     const res = await addFine({ libraryId: user.library.id, userId: data.userId, amountCents: data.amount, reason: data.reason, note: data.note, actorId: user.id });
     revalidatePath("/", "layout");
     after(async () => deliverPendingEmails(await getDb(), { limit: 5 }));
-    return { message: `${res.amount} charged to ${res.memberName}.` };
+    const { t } = await getI18n();
+    return { message: t("actions.fineCharged", { amount: res.amount, member: res.memberName }) };
   });
 }

@@ -5,7 +5,10 @@ import { ArrowUp, RotateCcw, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
-import { AiError, streamChat } from "@/lib/ai-client";
+import { streamChat } from "@/lib/ai-client";
+import { aiErrorMessage } from "@/lib/ai-messages";
+import { useI18n } from "@/i18n/client";
+import type { MessageKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -39,13 +42,7 @@ function makeTitleLinker(books: { id: string; title: string }[]) {
   };
 }
 
-const SUGGESTIONS = [
-  "I loved Project Hail Mary. What should I read next?",
-  "Something short and gripping I can borrow today",
-  "Which classics do you have, and which are available?",
-  "Recommend a fantasy series starter for a teenager",
-  "How do waitlists and renewals work here?",
-];
+const SUGGESTIONS: MessageKey[] = ["assistant.s1", "assistant.s2", "assistant.s3", "assistant.s4", "assistant.s5"];
 
 export function Chat({
   userName,
@@ -61,6 +58,8 @@ export function Chat({
   initialQuestion?: string;
 }) {
   const linkify = useMemo(() => makeTitleLinker(books), [books]);
+  const i18n = useI18n();
+  const { t } = i18n;
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -94,11 +93,11 @@ export function Chat({
         });
       }
       if (!sent) {
-        setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: "_Sorry, I couldn't come up with an answer. Please try rephrasing._" }]);
+        setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `_${t("assistant.noAnswer")}_` }]);
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
-        const msg = err instanceof AiError ? err.message : "Connection lost. Please try again.";
+        const msg = aiErrorMessage(i18n, err, "assistant.connectionLost");
         setMessages((m) => {
           const last = m[m.length - 1];
           return [...m.slice(0, -1), { role: "assistant", content: last.content ? `${last.content}\n\n_${msg}_` : `_${msg}_` }];
@@ -123,13 +122,13 @@ export function Chat({
       <div className="flex items-center justify-between pb-4">
         <div>
           <h1 className="flex items-center gap-2 text-3xl font-semibold">
-            <Sparkles className="size-6 text-primary" /> Ask the Librarian
+            <Sparkles className="size-6 text-primary" /> {t("nav.assistant")}
           </h1>
-          <p className="text-sm text-muted-foreground">Recommendations and answers from Folio, who knows every book on our shelves.</p>
+          <p className="text-sm text-muted-foreground">{t("assistant.subtitle")}</p>
         </div>
         {messages.length > 0 && (
           <Button variant="ghost" size="sm" onClick={() => setMessages([])} disabled={streaming}>
-            <RotateCcw /> New chat
+            <RotateCcw /> {t("assistant.newChat")}
           </Button>
         )}
       </div>
@@ -141,14 +140,14 @@ export function Chat({
               <Sparkles className="size-6" />
             </div>
             <div className="space-y-1">
-              <p className="font-heading text-2xl">Hi {userName}, what are you in the mood to read?</p>
+              <p className="font-heading text-2xl">{t("assistant.hello", { name: userName })}</p>
               <p className="text-sm text-muted-foreground">
-                {enabled ? "I can only recommend books we actually have, and I'll tell you if they're on the shelf." : "The AI librarian is turned off on this deployment."}
+                {enabled ? t("assistant.intro") : t("assistant.off")}
               </p>
             </div>
             {enabled && (
               <div className="flex max-w-xl flex-wrap justify-center gap-2">
-                {SUGGESTIONS.map((s) => (
+                {SUGGESTIONS.map((key) => t(key)).map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -179,11 +178,11 @@ export function Chat({
                   m.content ? (
                     <Markdown text={linkify(m.content)} />
                   ) : (
-                    <span className="flex items-center gap-1 py-1.5" aria-label="Thinking">
+                    <span className="flex items-center gap-1 py-1.5" aria-label={t("assistant.thinkingLabel")}>
                       {[0, 1, 2].map((d) => (
                         <span key={d} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style={{ animationDelay: `${d * 120}ms` }} />
                       ))}
-                      <span className="ml-2 text-xs text-muted-foreground">Thinking… the free AI can take up to 30 seconds</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{t("assistant.thinking")}</span>
                     </span>
                   )
                 ) : (
@@ -212,17 +211,17 @@ export function Chat({
               send(input);
             }
           }}
-          placeholder={enabled ? "Ask about a book, an author, or what to read next…" : "AI is not configured"}
+          placeholder={enabled ? t("assistant.placeholder") : t("assistant.notConfigured")}
           disabled={!enabled}
           rows={1}
           className="max-h-40 min-h-10 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
         {streaming ? (
-          <Button type="button" size="icon" variant="secondary" onClick={() => abortRef.current?.abort()} aria-label="Stop">
+          <Button type="button" size="icon" variant="secondary" onClick={() => abortRef.current?.abort()} aria-label={t("assistant.stop")}>
             <Square />
           </Button>
         ) : (
-          <Button type="submit" size="icon" disabled={!input.trim() || !enabled} aria-label="Send">
+          <Button type="submit" size="icon" disabled={!input.trim() || !enabled} aria-label={t("assistant.send")}>
             <ArrowUp />
           </Button>
         )}

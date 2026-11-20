@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useI18n } from "@/i18n/client";
 import { BookCover } from "@/components/book-cover";
 import { AvailabilityBadge, Stars } from "@/components/books/bits";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -32,18 +35,19 @@ export function BookGrid({ books }: { books: BookListItem[] }) {
 }
 
 export function BookTable({ books }: { books: BookListItem[] }) {
+  const { t } = useI18n();
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40">
-            <TableHead className="w-[40%]">Title</TableHead>
-            <TableHead className="hidden md:table-cell">Genre</TableHead>
-            <TableHead className="hidden sm:table-cell">Year</TableHead>
+            <TableHead className="w-[40%]">{t("bookFields.title")}</TableHead>
+            <TableHead className="hidden md:table-cell">{t("bookFields.genre")}</TableHead>
+            <TableHead className="hidden sm:table-cell">{t("bookFields.year")}</TableHead>
             <TableHead className="hidden lg:table-cell">ISBN</TableHead>
-            <TableHead className="hidden lg:table-cell">Shelf</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden xl:table-cell">Rating</TableHead>
+            <TableHead className="hidden lg:table-cell">{t("bookFields.shelf")}</TableHead>
+            <TableHead>{t("bookFields.status")}</TableHead>
+            <TableHead className="hidden xl:table-cell">{t("bookFields.rating")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
