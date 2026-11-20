@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { copies, fines, holds, notifications } from "@/lib/db/schema";
+import { copies, holds, notifications, reviews } from "@/lib/db/schema";
 import {
   addCopies,
   addFine,
@@ -10,7 +10,6 @@ import {
   checkInByBarcode,
   getBalance,
   getBook,
-  getOpenFines,
   markLoanLost,
   placeHold,
   processHoldQueue,
@@ -18,7 +17,6 @@ import {
   resolveFine,
   returnLoan,
   searchBooks,
-  settleFinesOnline,
   updateCopy,
 } from "@/lib/library";
 import { generateReminders } from "@/lib/reminders";
@@ -244,41 +242,6 @@ describe("returning and fines", () => {
   });
 });
 
-describe("online payments", () => {
-  async function owing() {
-    const member = await makeUser(db, lib.id);
-    const librarian = await makeUser(db, lib.id, "librarian");
-    const a = (await addFine({ libraryId: lib.id, userId: member.id, amountCents: 300, reason: "damaged", actorId: librarian.id })).fine!;
-    const b = (await addFine({ libraryId: lib.id, userId: member.id, amountCents: 150, reason: "overdue", actorId: librarian.id })).fine!;
-    return { member, fineIds: [a.id, b.id] };
-  }
-
-  it("marks the paid fines settled once, however often Stripe reports the payment", async () => {
-    const { member, fineIds } = await owing();
-    const pay = () => settleFinesOnline({ libraryId: lib.id, userId: member.id, fineIds, paymentRef: "cs_test_1", amountPaidCents: 450 });
-
-    expect(await pay()).toEqual({ settled: 2 });
-    expect(await pay()).toEqual({ settled: 0 }); // the webhook arriving after the redirect
-    expect(await getBalance(db, lib.id, member.id)).toBe(0);
-    const paid = await db.query.fines.findMany({ where: eq(fines.userId, member.id) });
-    expect(paid.every((f) => f.status === "paid" && f.paymentRef === "cs_test_1")).toBe(true);
-  });
-
-  it("never settles more than was paid, or someone else's fines", async () => {
-    const { member, fineIds } = await owing();
-    const stranger = await makeUser(db, lib.id);
-
-    expect(await settleFinesOnline({ libraryId: lib.id, userId: member.id, fineIds, paymentRef: "cs_short", amountPaidCents: 100 })).toEqual({ settled: 0 });
-    expect(await settleFinesOnline({ libraryId: lib.id, userId: stranger.id, fineIds, paymentRef: "cs_other", amountPaidCents: 450 })).toEqual({ settled: 0 });
-    expect(await getBalance(db, lib.id, member.id)).toBe(450);
-  });
-
-  it("lists a member's open fines, oldest first", async () => {
-    const { member, fineIds } = await owing();
-    expect((await getOpenFines(lib.id, member.id)).map((f) => f.id)).toEqual(fineIds);
-  });
-});
-
 describe("copies", () => {
   it("gives new copies the next barcodes in the library's sequence", async () => {
     const librarian = await makeUser(db, lib.id, "librarian");
@@ -454,6 +417,34 @@ describe("libraries are isolated from each other", () => {
 
     await expect(borrow(book.id, outsider.id)).rejects.toThrow(/isn't a member of this library/);
     await expect(placeHold({ libraryId: lib.id, bookId: book.id, userId: outsider.id })).rejects.toThrow(/aren't a member/);
+  });
+});
+
+describe("public catalogue", () => {
+  it("shows a book's availability and reviews without any member data", async () => {
+    const { getPublicBook } = await import("@/lib/public-catalog");
+    const member = await makeUser(db, lib.id, "member", "Secret Reader");
+    const book = await makeBook(db, lib.id, 1, "Public Book");
+    const loan = await makeLoan(db, lib.id, book.id, member.id, 5);
+    await db.insert(reviews).values({ bookId: book.id, userId: member.id, rating: 4, body: "Lovely." });
+
+    const data = await getPublicBook(book.id);
+
+    expect(data).toMatchObject({ book: { title: "Public Book", available: 0, totalCopies: 1 }, library: { id: lib.id } });
+    expect(data!.nextDue?.getTime()).toBe(loan.dueAt.getTime());
+    expect(data!.reviews).toEqual([expect.objectContaining({ rating: 4, body: "Lovely." })]);
+    const json = JSON.stringify(data);
+    expect(json).not.toContain("Secret Reader");
+    expect(json).not.toContain(member.email);
+    expect(json).not.toContain(member.id);
+    expect(await getPublicBook("not-a-uuid")).toBeNull();
+  });
+
+  it("opens the library named in the link, or the first one", async () => {
+    const { resolvePublicLibrary } = await import("@/lib/public-catalog");
+    const second = await makeLibrary(db, { slug: "second-branch" });
+    expect((await resolvePublicLibrary("second-branch")).library?.id).toBe(second.id);
+    expect((await resolvePublicLibrary("nope")).library?.id).toBe(lib.id);
   });
 });
 

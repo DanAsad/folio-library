@@ -7,12 +7,13 @@ import { AvailabilityBadge, Stars } from "@/components/books/bits";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BookListItem } from "@/lib/library";
 
-export function BookGrid({ books }: { books: BookListItem[] }) {
+/** `basePath` is where each book links to: the signed-in catalogue or the public one. */
+export function BookGrid({ books, basePath = "/books" }: { books: BookListItem[]; basePath?: string }) {
   return (
     <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
       {books.map((b) => (
         <li key={b.id}>
-          <Link href={`/books/${b.id}`} className="group block space-y-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={`${basePath}/${b.id}`} className="group block space-y-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <BookCover
               title={b.title}
               author={b.author}

@@ -206,8 +206,6 @@ export const fines = pgTable(
     note: text("note"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedById: uuid("resolved_by_id").references(() => users.id, { onDelete: "set null" }),
-    /** Stripe Checkout session that paid this fine online (also stops it being applied twice). */
-    paymentRef: text("payment_ref"),
     ...timestamps,
   },
   (t) => [index("fines_library_status_idx").on(t.libraryId, t.status), index("fines_user_idx").on(t.userId)],

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { BookOpenCheck, Building2, Sparkles, ScanBarcode, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { BookOpenCheck, Building2, LibrarySquare, Sparkles, ScanBarcode, ShieldCheck } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
 import { getDb } from "@/lib/db/client";
 import { searchBooks } from "@/lib/library";
@@ -56,6 +57,9 @@ export default async function LoginPage() {
         </div>
         <Logo href="/login" className="lg:hidden" />
         <LoginCard />
+        <Link href="/catalog" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+          <LibrarySquare className="size-4" /> {t("login.browsePublic")}
+        </Link>
         <p className="max-w-sm text-center text-xs text-muted-foreground">{t("login.demoNote")}</p>
       </section>
     </div>

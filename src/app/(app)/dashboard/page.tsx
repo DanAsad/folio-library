@@ -18,7 +18,6 @@ import { BorrowReservedButton } from "../books/[id]/book-actions";
 import { GenreChart, WeeklyLoansChart } from "./charts";
 import { Recommendations, RecommendationsSkeleton } from "./recommendations";
 import { getI18n } from "@/i18n/server";
-import { paymentsEnabled } from "@/lib/stripe";
 import { renderStored } from "@/i18n/stored";
 import type { Translator } from "@/i18n";
 
@@ -106,7 +105,7 @@ async function MemberSection({ user }: { user: CurrentUser }) {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
               <p className="flex items-center gap-2 text-sm">
                 <Receipt className="size-4 text-destructive" />
-                <span>{rich(paymentsEnabled() ? "dashboard.blockedOnline" : "dashboard.blocked", { amount: <strong>{money(owed, lib.currency)}</strong> })}</span>
+                <span>{rich("dashboard.blocked", { amount: <strong>{money(owed, lib.currency)}</strong> })}</span>
               </p>
               <Button size="sm" variant="outline" asChild>
                 <Link href="/loans?view=mine#fines">{t("dashboard.seeFines")}</Link>
@@ -157,7 +156,7 @@ async function MemberSection({ user }: { user: CurrentUser }) {
               label={t("dashboard.finesOwed")}
               value={money(owed, lib.currency)}
               tone={blocked ? "danger" : undefined}
-              hint={blocked ? t("dashboard.borrowingPaused") : paymentsEnabled() ? t("dashboard.payDeskOrOnline") : t("dashboard.payDesk")}
+              hint={blocked ? t("dashboard.borrowingPaused") : t("dashboard.payDesk")}
             />
           ) : (
             <Stat icon={BookOpen} label={t("dashboard.booksRead")} value={read} hint={t("dashboard.allTime")} />

@@ -81,7 +81,7 @@ export type BookListItem = {
   available: number;
 };
 
-function withAvailability<T extends { totalCopies: number; activeLoans: number; readyHolds: number }>(b: T) {
+export function withAvailability<T extends { totalCopies: number; activeLoans: number; readyHolds: number }>(b: T) {
   return { ...b, available: Math.max(0, b.totalCopies - b.activeLoans - b.readyHolds) };
 }
 
@@ -820,62 +820,6 @@ export async function resolveFine({
     }),
   });
   return { amount, memberName: fine.user.name ?? fine.user.email };
-}
-
-/** A member's unpaid fines at one library, oldest first (what an online payment covers). */
-export async function getOpenFines(libraryId: string, userId: string, limit = 10) {
-  const db = await getDb();
-  return db.query.fines.findMany({
-    where: and(eq(fines.libraryId, libraryId), eq(fines.userId, userId), eq(fines.status, "open")),
-    with: { loan: { with: { book: { columns: { title: true } } } } },
-    orderBy: asc(fines.createdAt),
-    limit,
-  });
-}
-
-/**
- * Marks fines paid after a successful online payment. Idempotent: the success redirect and the
- * webhook can both call it, and only fines that are still open (and belong to this member at
- * this library) change. Returns how many fines this call settled.
- */
-export async function settleFinesOnline({
-  libraryId,
-  userId,
-  fineIds,
-  paymentRef,
-  amountPaidCents,
-}: {
-  libraryId: string;
-  userId: string;
-  fineIds: string[];
-  paymentRef: string;
-  amountPaidCents: number;
-}) {
-  if (!fineIds.length) return { settled: 0 };
-  const db = await getDb();
-  return db.transaction(async (tx) => {
-    const open = await tx.query.fines.findMany({
-      where: and(eq(fines.libraryId, libraryId), eq(fines.userId, userId), eq(fines.status, "open"), inArray(fines.id, fineIds)),
-      with: { user: true },
-    });
-    // Never mark more as paid than Stripe actually collected.
-    const due = open.reduce((sum, f) => sum + f.amountCents, 0);
-    if (!open.length || amountPaidCents < due) return { settled: 0 };
-    const now = new Date();
-    await tx
-      .update(fines)
-      .set({ status: "paid", resolvedAt: now, resolvedById: userId, paymentRef })
-      .where(and(inArray(fines.id, open.map((f) => f.id)), eq(fines.status, "open")));
-    const lib = await getLibrary(tx, libraryId);
-    await tx.insert(activity).values({
-      libraryId,
-      actorId: userId,
-      action: "fine.paid",
-      subjectUserId: userId,
-      ...activityText("activity.finePaidOnline", { member: open[0].user.name ?? open[0].user.email, amount: money(due, lib) }),
-    });
-    return { settled: open.length };
-  });
 }
 
 /** A manual charge at the desk, e.g. for a damaged book. */

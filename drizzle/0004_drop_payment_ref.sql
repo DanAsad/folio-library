@@ -1,0 +1,1 @@
+ALTER TABLE "fines" DROP COLUMN "payment_ref";

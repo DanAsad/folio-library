@@ -32,7 +32,7 @@ Short notes on the choices behind Folio, what they cost, and what I'd do next. T
 
 **Four languages without a framework.** Translations are plain typed dictionaries (`src/i18n/messages`), with English as the source: TypeScript refuses to build if French, Spanish or Italian miss a key, and a test checks every message keeps the same placeholders. A ~150-line translator adds plurals (`Intl.PluralRules`) and locale-aware dates, money and relative times through `Intl`, so there's no i18n library to learn. The language lives in a cookie (falling back to `Accept-Language`) rather than in the URL, because the app sits behind a login and doesn't need translated, crawlable paths. Anything stored in the database for people to read later (notifications, the activity log) is saved as a message key plus parameters, so the same row renders in each reader's language; an English copy is kept for emails and old rows. Domain errors carry a key too, so the rules layer stays language-free and the action layer translates.
 
-**Online payments in test mode.** Members pay fines through Stripe Checkout, called with `fetch` (no SDK), and the app refuses any key that isn't a *test* key, so a public demo can't move real money. The success redirect isn't trusted on its own: the server looks the Checkout session up with its secret key and checks it belongs to the signed-in member before marking fines paid. An optional signed webhook records payments when the member closes the tab, and settlement is idempotent and never marks more than was actually paid.
+**A public catalogue that can't leak.** `/catalog` lets anyone browse without signing in. Rather than reuse the signed-in book queries and hide fields in the UI, it has its own small read-only module that only selects catalogue data and counts, and never writes (the signed-in pages process the waitlist on view). A test asserts no member name, email or id appears in what it returns.
 
 **Optional email.** Notifications always exist in the app. Email is a thin adapter (Resend's HTTP API via `fetch`, no SDK) that only runs when configured, never emails demo or reserved-domain addresses, and sends after the response with `after()` so the desk never waits on it.
 
@@ -44,13 +44,13 @@ Short notes on the choices behind Folio, what they cost, and what I'd do next. T
 
 ## Quality
 
-- 63 Vitest tests over the domain rules, tenancy, fines, online payments, webhook signatures, translations, reminders, reports, seed and migrations, running against a real in-memory Postgres in about 3 seconds.
+- 60 Vitest tests over the domain rules, tenancy, fines, the public catalogue, translations, reminders, reports, seed and migrations, running against a real in-memory Postgres in about 3 seconds.
 - GitHub Actions runs lint, typecheck, a production build, and the tests twice: on the embedded database and on a real Postgres server through the production driver. The second run exists because a raw SQL fragment with a JavaScript `Date` worked on the embedded database but not on Neon; this catches that class of bug before it ships.
 - The deploy guard fails a Vercel build without `DATABASE_URL`, instead of shipping a site that crashes on first load.
 
 ## What I'd do next
 
-- **Live payments**: switching Stripe to live mode needs a business account, receipts and refunds handled through the webhook.
+- **Online payments** (e.g. Stripe Checkout) so members can pay fines themselves; today staff record payments at the desk.
 - **Branch-level inventory** inside a library (copies at different branches, transfers, holds picked up at a chosen branch).
 - **Opening hours and closed days** so due dates and fines skip days the library is closed.
 - **Invitations** with a signed link, instead of pre-adding people by email.

@@ -1,10 +1,9 @@
-import { Building2, CreditCard, DatabaseZap, Mail } from "lucide-react";
+import { Building2, DatabaseZap, Mail } from "lucide-react";
 import { DEMO_MODE } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/books/bits";
 import { emailConfigured } from "@/lib/email";
-import { paymentsEnabled } from "@/lib/stripe";
 import { getI18n } from "@/i18n/server";
 import { requirePermissionPage } from "@/lib/session";
 import { NewLibraryForm, ResetDemoButton, SettingsForm } from "./settings-forms";
@@ -90,27 +89,6 @@ export default async function SettingsPage() {
               <p className="text-muted-foreground">
                 <Badge variant="outline">{t("settings.inAppOnly")}</Badge>{" "}
                 {rich("settings.emailOffBody", { key: <code className="font-mono">RESEND_API_KEY</code>, from: <code className="font-mono">EMAIL_FROM</code> })}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="size-5 text-primary" /> {t("settings.payments")}
-            </CardTitle>
-            <CardDescription>{t("settings.paymentsBody")}</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {paymentsEnabled() ? (
-              <p>
-                <Badge className="bg-success/15 text-success">{t("settings.stripeTest")}</Badge> {t("settings.stripeTestBody")}
-              </p>
-            ) : (
-              <p className="text-muted-foreground">
-                <Badge variant="outline">{t("settings.deskOnly")}</Badge>{" "}
-                {rich("settings.stripeOffBody", { key: <code className="font-mono">STRIPE_SECRET_KEY</code> })}
               </p>
             )}
           </CardContent>

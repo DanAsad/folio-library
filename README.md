@@ -2,21 +2,21 @@
 
 [![CI](https://github.com/DanAsad/folio-library/actions/workflows/ci.yml/badge.svg)](https://github.com/DanAsad/folio-library/actions/workflows/ci.yml)
 
-A small but complete library system: catalogue books and their physical copies, lend and return them, run waitlists, charge fines and take payments online, report on circulation, and help readers find their next book with an AI librarian. It runs several libraries side by side, each with its own catalogue, members, roles and rules, in English, French, Spanish and Italian.
+A small but complete library system: catalogue books and their physical copies, lend and return them, run waitlists, charge and settle fines, report on circulation, and help readers find their next book with an AI librarian. It runs several libraries side by side, each with its own catalogue, members, roles and rules, in English, French, Spanish and Italian.
 
-**Live demo:** https://folio-library-zeta.vercel.app · **Source:** https://github.com/DanAsad/folio-library · **Design decisions:** [docs/DECISIONS.md](docs/DECISIONS.md)
+**Live demo:** https://folio-library-zeta.vercel.app · **Public catalogue (no sign-in):** https://folio-library-zeta.vercel.app/catalog · **Source:** https://github.com/DanAsad/folio-library · **Design decisions:** [docs/DECISIONS.md](docs/DECISIONS.md)
 
 Sign in with one of the pre-made accounts on the login page (one click, no password):
 
 | Demo account | Role | What to try |
 | --- | --- | --- |
-| Jordan Lee | Member at both libraries | At Central: an overdue book and a small unpaid fine. Pay it online under *Loans & holds → Fines* with Stripe's test card `4242 4242 4242 4242`. Open the 🔔: at Riverside a reserved copy of *The Hobbit* is waiting, and clicking the notice switches library. Try smart search and the AI librarian. |
+| Jordan Lee | Member at both libraries | At Central: an overdue book and a small unpaid fine. Open the 🔔: at Riverside a reserved copy of *The Hobbit* is waiting, and clicking the notice switches library. Try smart search and the AI librarian. |
 | Sam Rivera | Librarian at Central, member at Riverside | Check books in at the desk by scanning or typing a barcode (e.g. `CEN-00021`), lend a specific copy, mark a copy lost, record fine payments, view reports. Switch to Riverside to see the same person as an ordinary member. |
 | Alex Morgan | Admin at both | Everything above, plus people and roles, each library's lending and fine rules, opening a new library, and resetting the demo. |
 
 The demo data **resets every night at 04:00 UTC** (admins can also reset it from *Library settings*), so feel free to change things. Switch language with the 🌐 button in the header or on the login page.
 
-**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 + shadcn/ui · PostgreSQL (Drizzle ORM; Neon in production, embedded PGlite locally) · Auth.js (pre-made demo accounts) · Stripe Checkout (test mode) · free open-source AI (GPT-OSS 20B through Pollinations; no account or API key) · Open Library API · Vitest · GitHub Actions · Vercel (hosting + cron).
+**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 + shadcn/ui · PostgreSQL (Drizzle ORM; Neon in production, embedded PGlite locally) · Auth.js (pre-made demo accounts) · free open-source AI (GPT-OSS 20B through Pollinations; no account or API key) · Open Library API · Vitest · GitHub Actions · Vercel (hosting + cron).
 
 ---
 
@@ -66,13 +66,16 @@ To enable optional features, copy `.env.example` to `.env` and fill in what you 
 - **Late fees are charged automatically** at check-in: per calendar day late, after the grace period, capped per loan. A lost copy charges the lost-item fee. Staff can add a fee for damage.
 - Members see what they owe and why. Once the balance reaches the library's limit, borrowing pauses until it's settled.
 - Staff record **payments or waivers** at the desk. All amounts are stored as integer cents.
-- **Members can pay online** with Stripe Checkout. The demo only accepts Stripe *test* keys, so no real money moves (card `4242 4242 4242 4242`, any future date, any CVC). The payment is confirmed server-side with Stripe before any fine is marked paid, an optional signed webhook covers members who close the tab, and both paths are idempotent.
+
+### Public catalogue
+- **`/catalog` works without signing in**, like a library's website: search by title, author, ISBN, genre or tag, filter by genre and availability, sort, and switch between libraries. Each book page shows how many copies are on the shelf, when the next one is due back, how many people are waiting, ratings and (anonymous) reviews.
+- It runs on its own read-only queries that select catalogue data and counts only, so member names, loans and barcodes can't leak; a test checks this. Search is a plain GET form, so it works without JavaScript and every search has a shareable link.
 
 ### Four languages
 - **English, French, Spanish and Italian**, chosen from the header or the login page (remembered in a cookie) or picked up from the browser's language.
 - Everything is translated: pages, buttons, validation and error messages, notifications, the activity log and charts. Dates, money and relative times use each language's own formatting (`5,75 €`, `il y a 3 jours`).
 - Notifications and activity entries are stored as message keys with parameters, so the same record reads correctly in every language.
-- The AI librarian, smart search and personal picks answer in the reader's language. Stripe Checkout opens in it too.
+- The AI librarian, smart search and personal picks answer in the reader's language.
 - A test checks that every language has every message with the same placeholders.
 
 ### Notifications and reminders
@@ -137,8 +140,6 @@ All variables are optional locally. See `.env.example`.
 | `CRON_SECRET` | Protects the daily job (`/api/cron/daily`). Vercel sends it automatically when set. |
 | `DEMO_RESET` | `false` keeps the daily job from resetting demo data |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Optional: email notifications through [Resend](https://resend.com) |
-| `STRIPE_SECRET_KEY` | Optional: a Stripe **test** secret key (`sk_test_…`) to let members pay fines online. Live keys are refused. |
-| `STRIPE_WEBHOOK_SECRET` | Optional: signing secret for a webhook on `checkout.session.completed` pointing at `/api/payments/webhook` |
 | `AI_ENABLED` | `false` turns all AI features off (default: on, free, no key needed) |
 | `AI_CHAT_URL` / `AI_MODEL` | Optional: any keyless OpenAI-compatible endpoint, e.g. local Ollama `http://localhost:11434/v1/chat/completions` + `llama3.2` |
 
@@ -146,7 +147,7 @@ All variables are optional locally. See `.env.example`.
 
 1. Push the repo to GitHub and import it in Vercel.
 2. Create a free Postgres database (Neon, from the Vercel Marketplace or neon.tech) and set `DATABASE_URL`.
-3. Set `AUTH_SECRET` and `CRON_SECRET`, and optionally `STRIPE_SECRET_KEY` (test mode) for online payments. The AI needs no setup.
+3. Set `AUTH_SECRET` and `CRON_SECRET`. The AI needs no setup.
 4. Deploy. The `vercel-build` script runs `db:setup` (migrations and seed-if-empty) before `next build`. If `DATABASE_URL` is missing, the build stops with a clear error instead of shipping a site without a database.
 
 The daily job is registered from `vercel.json`. Migrations are written to run safely on a database that already has data (see `tests/migrations.test.ts`).
@@ -190,7 +191,7 @@ tests/                     Vitest suites
 npm test
 ```
 
-63 tests run in about 3 seconds with [Vitest](https://vitest.dev). [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, a production build and the tests twice on every push: once on the embedded database, and once on a real Postgres server through the same driver production uses. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
+60 tests run in about 3 seconds with [Vitest](https://vitest.dev). [GitHub Actions](.github/workflows/ci.yml) runs lint, typecheck, a production build and the tests twice on every push: once on the embedded database, and once on a real Postgres server through the same driver production uses. The domain tests use a real Postgres (PGlite, in memory) with the app's own migrations, so they exercise the actual SQL, transactions and row locks rather than mocks. Each test starts from an empty database.
 
 | Area | What is checked |
 | --- | --- |

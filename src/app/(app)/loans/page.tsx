@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { differenceInCalendarDays } from "date-fns";
-import { BookMarked, CircleCheck, CircleX, Clock, History, Receipt } from "lucide-react";
+import { BookMarked, Clock, History, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -15,8 +15,6 @@ import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { BorrowReservedButton, CancelHoldButton, CheckInButton, MarkLostButton, RenewButton } from "../books/[id]/book-actions";
 import { DeskCheckIn } from "./desk-check-in";
-import { PayFinesButton } from "./pay-fines";
-import { paymentsEnabled } from "@/lib/stripe";
 import { getI18n } from "@/i18n/server";
 import type { Translator } from "@/i18n";
 
@@ -204,9 +202,6 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
 
   // Member view
   const owed = myFines.filter((f) => f.status === "open").reduce((sum, f) => sum + f.amountCents, 0);
-  const canPayOnline = paymentsEnabled() && owed > 0;
-  const paid = typeof sp.paid === "string" ? Number(sp.paid) : null;
-  const payment = sp.payment;
   const rules = [
     t("loansPage.rules", { library: lib.name, days: lib.loanDays, count: lib.maxRenewals }),
     lib.finePerDayCents
@@ -218,16 +213,6 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
   return (
     <>
       <PageHeader title={t("shell.myLoans")} description={rules.trim()} actions={tabs} />
-      {paid !== null && (
-        <p className="mb-6 flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm">
-          <CircleCheck className="size-4 text-success" /> {paid > 0 ? t("actions.paid", { count: paid }) : t("payments.alreadyRecorded")}
-        </p>
-      )}
-      {(payment === "cancelled" || payment === "error") && (
-        <p className="mb-6 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
-          <CircleX className="size-4 text-warning" /> {payment === "cancelled" ? t("payments.cancelled") : t("payments.error")}
-        </p>
-      )}
       <section className="space-y-4">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
           <BookMarked className="size-5 text-primary" /> {t("loansPage.current")}
@@ -327,10 +312,9 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
           <>
             {lib.blockAtCents > 0 && owed >= lib.blockAtCents && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm">
-                {t(canPayOnline ? "loansPage.pausedOnline" : "loansPage.paused", { amount: money(lib.blockAtCents, lib.currency), library: lib.name })}
+                {t("loansPage.paused", { amount: money(lib.blockAtCents, lib.currency), library: lib.name })}
               </p>
             )}
-            {canPayOnline && <PayFinesButton amount={money(owed, lib.currency)} />}
             <ul className="divide-y rounded-xl border bg-card text-sm">
               {myFines.map((f) => (
                 <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -342,7 +326,6 @@ export default async function LoansPage({ searchParams }: PageProps<"/loans">) {
                     <span className="text-xs text-muted-foreground">
                       {date(f.createdAt, "medium")}
                       {f.note ? ` · ${f.note}` : ""}
-                      {f.paymentRef ? ` · ${t("payments.paidOnline")}` : ""}
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
