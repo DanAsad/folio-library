@@ -43,3 +43,8 @@ next-env.d.ts
 
 # local embedded database
 /.data
+
+# local editor/tooling files
+/.claude/
+AGENTS.md
+CLAUDE.md
